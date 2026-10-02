@@ -376,7 +376,11 @@ defineExpose({ centrerSur })
         </button>
       </template>
       <template v-else>
-        <button v-if="scenario.brouillons.includes(menu.index)" type="button" @click="relierExtremites">
+        <button
+          v-if="scenario.brouillons.includes(menu.index) && scenarioCourant(bien).lignes[menu.index].points.length >= 3"
+          type="button"
+          @click="relierExtremites"
+        >
           Relier les extrémités
         </button>
         <button type="button" @click="supprimerLaLigne">Supprimer cette ligne de coupe</button>
