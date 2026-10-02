@@ -112,7 +112,7 @@ function morceaux(parcelles: Parcelle[], lignes: LigneCoupe[], prix: PrixEffecti
 }
 
 export function bilanScenario(bien: Bien): BilanScenario {
-  const { lignes, attributions, objectifs } = scenarioCourant(bien)
+  const { lignes, attributions, objectifs, decoupe } = scenarioCourant(bien)
   const prix = prixEffectifs(bien)
   const avecPrix = prix.parM2.size > 0
   const lots: BilanLot[] = tenementsDuBien(bien).flatMap(({ cle, parcelles }) => {
@@ -153,7 +153,7 @@ export function bilanScenario(bien: Bien): BilanScenario {
 
   const avertissements = [...parts(bien, prix).avertissements]
   // Avant tout Découpage, aucun Lot n'est attribué : rien à signaler
-  if (attributions.length > 0 && lots.some((l) => l.acquereur === null)) {
+  if (decoupe && lots.some((l) => l.acquereur === null)) {
     avertissements.push('Surface non attribuée : relancez le Découpage')
   }
 
@@ -251,6 +251,7 @@ export function lancerDecoupage(bien: Bien): void {
   scenarioCourant(bien).lignes = []
   scenarioCourant(bien).attributions = []
   scenarioCourant(bien).ajuste = false
+  scenarioCourant(bien).decoupe = true
 
   const tenements = tenementsDuBien(bien).map(({ cle, parcelles }) => ({
     cle,

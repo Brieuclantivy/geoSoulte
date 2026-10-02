@@ -24,6 +24,11 @@ export function importer(json: string): Bien {
   return {
     ...creerBien(),
     ...bien,
-    scenarios: bien.scenarios.map((s: Scenario) => ({ ...scenarioVide(s.id, s.nom), ...s })),
+    // Avant le champ `decoupe`, un Scénario découpé se reconnaît à ses attributions
+    scenarios: bien.scenarios.map((s: Scenario) => ({
+      ...scenarioVide(s.id, s.nom),
+      ...s,
+      decoupe: s.decoupe ?? (s.attributions ?? []).length > 0,
+    })),
   }
 }

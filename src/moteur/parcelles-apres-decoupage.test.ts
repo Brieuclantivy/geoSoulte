@@ -12,6 +12,7 @@ import {
   type Bien,
 } from './bien'
 import { bilanScenario, lancerDecoupage } from './decoupage'
+import { exporter, importer } from './export'
 import { rectangle } from './fixtures'
 
 const NON_ATTRIBUE = 'Surface non attribuée : relancez le Découpage'
@@ -108,6 +109,30 @@ describe('Parcelles modifiées après un Découpage', () => {
     lancerDecoupage(bien)
     expect(bilanScenario(bien).lots.every((l) => l.acquereur !== null)).toBe(true)
     expect(bilanScenario(bien).avertissements).not.toContain(NON_ATTRIBUE)
+  })
+
+  test('l’avertissement apparaît aussi quand le Découpage de l’unique Tènement est effacé', () => {
+    const bien = creerBien()
+    ajouterParcelle(bien, rectangle('A', 0, 0, 1000, 500))
+    fixerObjectif(bien, ajouterAcquereur(bien, 'Paul'), { unite: 'ha', valeur: 20 })
+    fixerObjectif(bien, ajouterAcquereur(bien, 'Marie'), { unite: 'ha', valeur: 30 })
+    lancerDecoupage(bien)
+
+    ajouterParcelle(bien, rectangle('B', 1000, 0, 100, 500))
+
+    expect(bilanScenario(bien).lots.every((l) => l.acquereur === null)).toBe(true)
+    expect(bilanScenario(bien).avertissements).toContain(NON_ATTRIBUE)
+  })
+
+  test('un export antérieur à cet avertissement le retrouve après import', () => {
+    const { bien } = bienDecoupe()
+    ajouterParcelle(bien, rectangle('D', 0, 500, 400, 100))
+    const ancien = JSON.parse(exporter(bien))
+    for (const scenario of ancien.bien.scenarios) {
+      delete scenario.decoupe
+    }
+
+    expect(bilanScenario(importer(JSON.stringify(ancien))).avertissements).toContain(NON_ATTRIBUE)
   })
 
   test('avant tout Découpage, aucun avertissement de surface non attribuée', () => {

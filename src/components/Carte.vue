@@ -120,7 +120,7 @@ watch(
     for (const lot of scenario.lots) {
       const couleur = props.bien.acquereurs.find((a) => a.id === lot.acquereur)?.couleur
       // Avant tout Découpage, les Lots ne sont pas affichés : un clic sur le Bien retire la Parcelle
-      if (!couleur && !scenarioCourant(props.bien).attributions.length) {
+      if (!couleur && !scenarioCourant(props.bien).decoupe) {
         continue
       }
 

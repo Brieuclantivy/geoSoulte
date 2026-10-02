@@ -58,6 +58,8 @@ export interface Scenario {
   ordre: string[]
   lignes: LigneCoupe[]
   attributions: Attribution[]
+  // Vrai dès que le Découpage automatique a été lancé, même si un changement de Parcelles l'a effacé depuis
+  decoupe: boolean
   // Vrai si les lignes ou les attributions ont été modifiées à la main depuis le dernier Découpage automatique
   ajuste: boolean
 }
@@ -108,6 +110,7 @@ export function scenarioVide(id: string, nom: string): Scenario {
     ordre: [],
     lignes: [],
     attributions: [],
+    decoupe: false,
     ajuste: false,
   }
 }

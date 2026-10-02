@@ -162,7 +162,7 @@ const acquereur = (id: string | null) => props.bien.acquereurs.find((a) => a.id 
       </button>
     </p>
 
-    <table v-if="bilan.lots.some((l) => l.acquereur)" class="bilan">
+    <table v-if="scenarioCourant(bien).decoupe" class="bilan">
       <thead>
         <tr><th>Acquéreur</th><th>Surface cadastrale</th><th>Surface mesurée</th><th>Coût</th><th>Objectif</th><th>Écart</th></tr>
       </thead>
@@ -181,7 +181,7 @@ const acquereur = (id: string | null) => props.bien.acquereurs.find((a) => a.id 
         </tr>
       </tbody>
     </table>
-    <details v-if="bilan.lots.some((l) => l.acquereur)">
+    <details v-if="scenarioCourant(bien).decoupe">
       <summary>Bilan par Lot ({{ bilan.lots.length }})</summary>
       <table>
         <thead>
