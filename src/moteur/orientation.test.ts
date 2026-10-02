@@ -36,7 +36,8 @@ describe('Orientation des bandes', () => {
 
     const paul = etendue(bien, ids.Paul)
     const marie = etendue(bien, ids.Marie)
-    // Bandes empilées du sud au nord : celle de Paul est entièrement au sud de celle de Marie
+    // Bandes empilées du sud au nord, coupes parallèles au petit côté (des tranches, pas des lanières) :
+    // celle de Paul est entièrement au sud de celle de Marie
     expect(paul.nord).toBeLessThanOrEqual(marie.sud + 0.01)
     expect(bilanScenario(bien).acquereurs.find((a) => a.id === ids.Paul)!.surfaceCadastrale).toBeCloseTo(10 * HA, -1)
   })
