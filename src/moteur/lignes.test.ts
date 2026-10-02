@@ -60,23 +60,7 @@ describe('Ajouter une ligne de coupe', () => {
   })
 })
 
-describe('Ligne de coupe qui ne traverse pas tout le Tènement', () => {
-  test('une ligne tracée dont une extrémité est dans le Tènement est refusée', () => {
-    const { bien } = bienDecoupe()
-    const lignes = structuredClone(scenarioCourant(bien).lignes)
-
-    expect(ajouterLigne(bien, [pt(500, 250), pt(500, 600)])).toBe(false)
-    expect(scenarioCourant(bien).lignes).toEqual(lignes)
-  })
-
-  test('déplacer une extrémité de ligne à l’intérieur du Tènement est refusé', () => {
-    const { bien, ids } = bienDecoupe()
-
-    // La ligne entre Paul et Marie (x = 200) ne monte plus que jusqu'à y = 400
-    expect(modifierLigne(bien, 0, [pt(200, -1), pt(200, 400)])).toBe(false)
-    expect(bilanDe(bien, ids.Paul).surfaceCadastrale).toBeCloseTo(10 * HA, -1)
-  })
-
+describe('Ligne de coupe en U', () => {
   test('une ligne en U dont les extrémités sont hors du Tènement découpe exactement le U', () => {
     const { bien, ids } = bienDecoupe()
 
@@ -92,12 +76,6 @@ describe('Ligne de coupe qui ne traverse pas tout le Tènement', () => {
     expect(surfaces[0]).toBeCloseTo(12 * HA, -1)
     expect(bilanDe(bien, ids.Marie).surfaceCadastrale).toBeCloseTo(40 * HA, -1)
     expect(toutAttribue(bien)).toBe(true)
-  })
-
-  test('une ligne en U dont les extrémités sont dans le Tènement est refusée', () => {
-    const { bien } = bienDecoupe()
-
-    expect(ajouterLigne(bien, [pt(300, 400), pt(300, 200), pt(700, 200), pt(700, 400)])).toBe(false)
   })
 })
 

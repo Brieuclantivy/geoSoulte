@@ -9,13 +9,14 @@ import XYZ from 'ol/source/XYZ'
 import GeoJSON from 'ol/format/GeoJSON'
 import Feature from 'ol/Feature'
 import LineString from 'ol/geom/LineString'
+import Polygon from 'ol/geom/Polygon'
 import Modify from 'ol/interaction/Modify'
 import Draw from 'ol/interaction/Draw'
 import { Circle, Fill, Stroke, Style } from 'ol/style'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { fixerOrientation, scenarioCourant, type Bien, type BilanBien } from '../moteur/bien'
 import Boussole from './Boussole.vue'
-import { ajouterLigne, reattribuer, supprimerLigne, type BilanScenario } from '../moteur/decoupage'
+import { ajouterLigne, fermerLigne, reattribuer, supprimerLigne, type BilanScenario } from '../moteur/decoupage'
 
 const props = defineProps<{ bien: Bien; bilan: BilanBien; scenario: BilanScenario }>()
 const emit = defineEmits<{
@@ -139,34 +140,44 @@ watch(
   { immediate: true },
 )
 
-// Lignes de coupe, modifiables : déplacer un sommet, en ajouter un en tirant un segment, Alt+clic pour en supprimer un
-const sourceLignes = new VectorSource<Feature<LineString>>()
+// Lignes de coupe, modifiables : déplacer un sommet, en ajouter un en tirant un segment, Alt+clic pour en supprimer un.
+// Une ligne fermée (zone) est dessinée en polygone ; un brouillon, qui ne coupe rien, en pointillés orange.
+const sourceLignes = new VectorSource<Feature<LineString | Polygon>>()
+const styleLigne = new Style({ stroke: new Stroke({ color: '#111', width: 2, lineDash: [6, 4] }) })
+const styleBrouillon = new Style({ stroke: new Stroke({ color: '#f58231', width: 3, lineDash: [4, 6] }) })
 const coucheLignes = new VectorLayer({
   source: sourceLignes,
-  style: new Style({ stroke: new Stroke({ color: '#111', width: 2, lineDash: [6, 4] }) }),
+  style: (feature) => (props.scenario.brouillons.includes(feature.get('index')) ? styleBrouillon : styleLigne),
 })
 function dessinerLignes() {
   sourceLignes.clear()
   scenarioCourant(props.bien).lignes.forEach((l, index) => {
-    const feature = new Feature(new LineString(l.points.map((p) => fromLonLat(p))))
+    const points = l.points.map((p) => fromLonLat(p))
+    const feature = new Feature(l.fermee ? new Polygon([[...points, points[0]]]) : new LineString(points))
     feature.set('index', index)
     sourceLignes.addFeature(feature)
   })
 }
 watch(() => scenarioCourant(props.bien).lignes, dessinerLignes, { immediate: true, deep: true })
+watch(() => props.scenario.brouillons, () => coucheLignes.changed())
 
 const modification = new Modify({
   source: sourceLignes,
   style: new Style({ image: new Circle({ radius: 6, fill: new Fill({ color: '#111' }), stroke: new Stroke({ color: 'white', width: 2 }) }) }),
 })
-const pointsDe = (f: Feature<LineString>) => f.getGeometry()!.getCoordinates().map((c) => toLonLat(c))
-let enCours: Feature<LineString> | null = null
+// Points (WGS84) d'une ligne de coupe dessinée ; le point de fermeture d'un polygone n'est pas répété
+function pointsDe(f: Feature<LineString | Polygon>): number[][] {
+  const geometrie = f.getGeometry()!
+  const coordonnees = geometrie instanceof Polygon ? geometrie.getCoordinates()[0].slice(0, -1) : geometrie.getCoordinates()
+  return coordonnees.map((c) => toLonLat(c))
+}
+let enCours: Feature<LineString | Polygon> | null = null
 let image = 0
 modification.on('modifystart', (e) => {
-  enCours = e.features.item(0) as Feature<LineString>
+  enCours = e.features.item(0) as Feature<LineString | Polygon>
 })
 sourceLignes.on('changefeature', (e) => {
-  const feature = e.feature as Feature<LineString>
+  const feature = e.feature as Feature<LineString | Polygon>
   if (feature !== enCours || image) {
     return
   }
@@ -180,37 +191,46 @@ sourceLignes.on('changefeature', (e) => {
   })
 })
 modification.on('modifyend', (e) => {
-  const feature = e.features.item(0) as Feature<LineString>
+  const feature = e.features.item(0) as Feature<LineString | Polygon>
   enCours = null
   emit('ligne', feature.get('index'), pointsDe(feature), true)
   // Redessine depuis l'état : une modification refusée revient en place
   dessinerLignes()
 })
 
-// Tracé d'une nouvelle ligne de coupe : clic pour chaque sommet, double-clic pour finir, Échap pour annuler
-const trace = new Draw({ type: 'LineString' })
-const enTrace = ref(false)
-trace.on('drawend', (e) => {
-  const points = (e.feature.getGeometry() as LineString).getCoordinates().map((c) => toLonLat(c))
-  basculerTrace()
-  if (!ajouterLigne(props.bien, points)) {
-    alert('La ligne doit traverser au moins un Lot de part en part : commencez et finissez-la hors du Bien.')
+// Tracé d'une nouvelle ligne de coupe, ou d'une zone (ligne fermée) : clic pour chaque sommet, double-clic pour
+// finir (ou clic sur le premier point pour fermer une zone), Échap pour annuler
+const traces = { ligne: new Draw({ type: 'LineString' }), zone: new Draw({ type: 'Polygon' }) }
+const enTrace = ref<keyof typeof traces | null>(null)
+traces.ligne.on('drawend', (e) => {
+  basculerTrace(null)
+  if (!ajouterLigne(props.bien, pointsDe(e.feature as Feature<LineString>))) {
+    alert('La ligne doit toucher le Bien et y découper au moins un Lot.')
+  }
+})
+traces.zone.on('drawend', (e) => {
+  basculerTrace(null)
+  if (!ajouterLigne(props.bien, pointsDe(e.feature as Feature<Polygon>), true)) {
+    alert('La zone doit découper au moins un Lot du Bien.')
   }
 })
 
-function basculerTrace() {
-  enTrace.value = !enTrace.value
+// Active le tracé demandé, ou le désactive s'il l'est déjà (null : désactive tout tracé)
+function basculerTrace(mode: keyof typeof traces | null) {
   if (enTrace.value) {
-    carte.addInteraction(trace)
-  } else {
-    carte.removeInteraction(trace)
+    carte.removeInteraction(traces[enTrace.value])
+  }
+
+  enTrace.value = enTrace.value === mode ? null : mode
+  if (enTrace.value) {
+    carte.addInteraction(traces[enTrace.value])
   }
 }
 
 function touche(e: KeyboardEvent) {
   if (e.key === 'Escape' && enTrace.value) {
-    trace.abortDrawing()
-    basculerTrace()
+    traces[enTrace.value].abortDrawing()
+    basculerTrace(null)
   }
 }
 
@@ -232,6 +252,14 @@ function choisirAcquereur(acquereur: string) {
 function retirerLaParcelle() {
   if (menu.value?.type === 'lot' && menu.value.parcelle) {
     emit('retirer', menu.value.parcelle)
+  }
+
+  menu.value = null
+}
+
+function relierExtremites() {
+  if (menu.value?.type === 'ligne' && !fermerLigne(props.bien, menu.value.index)) {
+    alert('La zone ainsi fermée ne découpe aucun Lot.')
   }
 
   menu.value = null
@@ -326,10 +354,16 @@ defineExpose({ centrerSur })
   <div class="carte">
     <div ref="cible" class="ol"></div>
     <div class="outils">
-      <button v-if="scenarioCourant(bien).lignes.length || scenarioCourant(bien).attributions.length" type="button" @click="basculerTrace">
-        {{ enTrace ? 'Annuler le tracé' : '✏ Tracer une ligne de coupe' }}
-      </button>
-      <span v-if="enTrace" class="aide">Clic pour chaque sommet, double-clic pour finir</span>
+      <template v-if="scenarioCourant(bien).lignes.length || scenarioCourant(bien).attributions.length">
+        <button type="button" @click="basculerTrace('ligne')">
+          {{ enTrace === 'ligne' ? 'Annuler le tracé' : '✏ Tracer une ligne de coupe' }}
+        </button>
+        <button type="button" @click="basculerTrace('zone')">
+          {{ enTrace === 'zone' ? 'Annuler le tracé' : '⬠ Tracer une zone' }}
+        </button>
+      </template>
+      <span v-if="enTrace === 'ligne'" class="aide">Clic pour chaque sommet, double-clic pour finir</span>
+      <span v-if="enTrace === 'zone'" class="aide">Clic pour chaque sommet, clic sur le premier point ou double-clic pour fermer</span>
     </div>
     <div v-if="menu" class="menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }">
       <template v-if="menu.type === 'lot'">
@@ -341,7 +375,12 @@ defineExpose({ centrerSur })
           Retirer la Parcelle {{ menu.parcelle }} du Bien
         </button>
       </template>
-      <button v-else type="button" @click="supprimerLaLigne">Supprimer cette ligne de coupe</button>
+      <template v-else>
+        <button v-if="scenario.brouillons.includes(menu.index)" type="button" @click="relierExtremites">
+          Relier les extrémités
+        </button>
+        <button type="button" @click="supprimerLaLigne">Supprimer cette ligne de coupe</button>
+      </template>
     </div>
     <Boussole :orientation="scenarioCourant(bien).orientation" @change="(o) => fixerOrientation(bien, o)" />
     <fieldset class="fonds">

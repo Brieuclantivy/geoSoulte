@@ -40,6 +40,8 @@ export interface BilanAcquereur {
 
 export interface BilanScenario {
   lots: BilanLot[]
+  // Indices (dans les lignes du Scénario) des lignes de coupe en brouillon, qui ne coupent rien
+  brouillons: number[]
   acquereurs: BilanAcquereur[]
   ecartAvantRecalage: number | null
   avertissements: string[]
@@ -88,11 +90,22 @@ function coteGauche(points: Position[], portee: number): PolygonesL93 {
   return [[anneau]]
 }
 
+// Partie du plan que la ligne place du côté 'G' : sa gauche pour une ligne ouverte, son intérieur pour une ligne
+// fermée, rien pour un brouillon
+function cote(ligne: LigneCoupe, parcelles: Parcelle[], portee: number): PolygonesL93 {
+  const points = ligne.points.map(pointVersL93)
+  if (ligne.fermee) {
+    return [[[...points, points[0]]]]
+  }
+
+  return estBrouillon(ligne, parcelles) ? [] : coteGauche(points, portee)
+}
+
 function morceaux(parcelles: Parcelle[], lignes: LigneCoupe[], prix: PrixEffectifs): Morceau[] {
   const geometries = parcelles.map((p) => versL93(p.geometrie))
   const [x0, y0, x1, y1] = boite(geometries.flat())
   const portee = 10 * Math.hypot(x1 - x0, y1 - y0)
-  const cotes = lignes.map((l) => coteGauche(l.points.map(pointVersL93), portee))
+  const cotes = lignes.map((l) => cote(l, parcelles, portee))
 
   let resultat: Morceau[] = parcelles.map((p, i) => ({
     signature: '',
@@ -101,6 +114,11 @@ function morceaux(parcelles: Parcelle[], lignes: LigneCoupe[], prix: PrixEffecti
     prix: prix.parM2.get(p.id) ?? 0,
   }))
   for (const cote of cotes) {
+    if (cote.length === 0) {
+      resultat = resultat.map((m) => ({ ...m, signature: m.signature + 'D' }))
+      continue
+    }
+
     resultat = resultat.flatMap((m) =>
       [
         { ...m, signature: m.signature + 'G', geometrie: intersection(enGeom(m.geometrie), enGeom(cote)) },
@@ -162,7 +180,13 @@ export function bilanScenario(bien: Bien): BilanScenario {
     avertissements.push(`Parcelles sans prix à l'hectare (Coût nul) : ${prix.sansPrix.join(', ')}`)
   }
 
-  return { lots, acquereurs, ecartAvantRecalage: prix.ecartAvantRecalage, avertissements }
+  const tenements = tenementsDuBien(bien)
+  const brouillons = lignes.flatMap((l, i) => {
+    const tenement = tenements.find((t) => t.cle === l.tenement)
+    return tenement && estBrouillon(l, tenement.parcelles) ? [i] : []
+  })
+
+  return { lots, brouillons, acquereurs, ecartAvantRecalage: prix.ecartAvantRecalage, avertissements }
 }
 
 interface Part {
@@ -383,29 +407,51 @@ function signaturesDesLots(parcelles: Parcelle[], lignes: LigneCoupe[]): Set<str
   )
 }
 
-// Vrai si une extrémité de la ligne (WGS84) est à l'intérieur d'une des Parcelles : la ligne ne traverse
-// alors pas le Tènement de part en part, et la coupe réelle (ligne prolongée) différerait du tracé
-function extremiteDedans(points: Position[], parcelles: Parcelle[]): boolean {
-  return [points[0], points[points.length - 1]].some((p) =>
-    parcelles.some((parcelle) => pointDans(pointVersL93(p), versL93(parcelle.geometrie))),
+// Une ligne ouverte dont une extrémité est à l'intérieur d'une Parcelle du Tènement est un brouillon : elle ne
+// le traverse pas de part en part, et ne coupe rien tant qu'on ne l'a pas fermée ou prolongée au-dehors
+function estBrouillon(ligne: LigneCoupe, parcelles: Parcelle[]): boolean {
+  const { points } = ligne
+  return (
+    !ligne.fermee &&
+    [points[0], points[points.length - 1]].some((p) =>
+      parcelles.some((parcelle) => pointDans(pointVersL93(p), versL93(parcelle.geometrie))),
+    )
   )
 }
 
-// Remplace les points (WGS84) de la ligne de coupe d'indice donné. La modification est refusée (false) si
-// une extrémité entre dans le Tènement, ou si elle vide ou crée un Lot : chaque Lot garde ainsi son Acquéreur
-// et tout reste attribué.
-export function modifierLigne(bien: Bien, index: number, points: Position[]): boolean {
+// Remplace la ligne de coupe d'indice donné. Un brouillon qui se met à couper est accepté : les Lots apparus
+// prennent l'Acquéreur du Lot dont ils sont issus. Sinon, le remplacement est refusé (false) s'il vide ou crée
+// un Lot : chaque Lot garde ainsi son Acquéreur et tout reste attribué.
+function remplacerLigne(bien: Bien, index: number, nouvelle: LigneCoupe): boolean {
   const ligne = scenarioCourant(bien).lignes[index]
   const tenement = tenementsDuBien(bien).find((t) => t.cle === ligne?.tenement)
-  if (!tenement || points.length < 2 || extremiteDedans(points, tenement.parcelles)) {
+  if (!tenement || nouvelle.points.length < 2) {
     return false
   }
 
-  const modifiees = scenarioCourant(bien).lignes.map((l, i) => (i === index ? { ...l, points } : l))
+  const etaitBrouillon = estBrouillon(ligne, tenement.parcelles)
+  const estEncoreBrouillon = estBrouillon(nouvelle, tenement.parcelles)
+  // Une ligne qui coupe ne redevient pas un brouillon : ses Lots fusionneraient en silence
+  if (!etaitBrouillon && estEncoreBrouillon) {
+    return false
+  }
+
+  const modifiees = scenarioCourant(bien).lignes.map((l, i) => (i === index ? nouvelle : l))
   const duTenement = (lignes: LigneCoupe[]) => lignes.filter((l) => l.tenement === ligne.tenement)
   const avant = signaturesDesLots(tenement.parcelles, duTenement(scenarioCourant(bien).lignes))
   const apres = signaturesDesLots(tenement.parcelles, duTenement(modifiees))
-  if (avant.size !== apres.size || [...avant].some((s) => !apres.has(s))) {
+  if (etaitBrouillon && !estEncoreBrouillon) {
+    if (apres.size <= avant.size) {
+      return false
+    }
+
+    // Tous les Lots sont du côté 'D' du brouillon : leur part du côté 'G' prend le même Acquéreur
+    const rang = duTenement(scenarioCourant(bien).lignes).indexOf(ligne)
+    const cote = (signature: string) => signature.slice(0, rang) + 'G' + signature.slice(rang + 1)
+    scenarioCourant(bien).attributions = scenarioCourant(bien).attributions.flatMap((a) =>
+      a.tenement === ligne.tenement ? [a, { ...a, signature: cote(a.signature) }] : [a],
+    )
+  } else if (avant.size !== apres.size || [...avant].some((s) => !apres.has(s))) {
     return false
   }
 
@@ -414,36 +460,46 @@ export function modifierLigne(bien: Bien, index: number, points: Position[]): bo
   return true
 }
 
-// Ajoute une ligne de coupe (WGS84) à chaque Tènement que son trace touche et découpe ; les deux Lots issus
-// d'un Lot gardent son Acquéreur. Refusée (false) si une extrémité est dans le Bien ou si elle ne découpe aucun Lot.
-export function ajouterLigne(bien: Bien, points: Position[]): boolean {
-  if (extremiteDedans(points, bien.parcelles)) {
+// Remplace les points (WGS84) de la ligne de coupe d'indice donné (voir remplacerLigne)
+export function modifierLigne(bien: Bien, index: number, points: Position[]): boolean {
+  return remplacerLigne(bien, index, { ...scenarioCourant(bien).lignes[index], points })
+}
+
+// Relie les extrémités d'un brouillon : la ligne fermée découpe la zone qu'elle entoure. Refusé (false) pour une
+// ligne qui coupe déjà, ou si la zone ne découpe aucun Lot.
+export function fermerLigne(bien: Bien, index: number): boolean {
+  const ligne = scenarioCourant(bien).lignes[index]
+  const tenement = tenementsDuBien(bien).find((t) => t.cle === ligne?.tenement)
+  if (!tenement || !estBrouillon(ligne, tenement.parcelles) || ligne.points.length < 3) {
     return false
   }
 
-  const trace = points.map(pointVersL93)
+  return remplacerLigne(bien, index, { ...ligne, fermee: true })
+}
+
+// Ajoute une ligne de coupe (WGS84), ouverte ou fermée, à chaque Tènement que son tracé touche et découpe ;
+// les deux Lots issus d'un Lot gardent son Acquéreur. Une ligne ouverte dont une extrémité est dans le Tènement
+// y est ajoutée en brouillon. Refusée (false) si elle n'est ni un brouillon ni ne découpe un Lot.
+export function ajouterLigne(bien: Bien, points: Position[], fermee = false): boolean {
+  const trace = (fermee ? [...points, points[0]] : points).map(pointVersL93)
   let acceptee = false
   for (const { cle, parcelles } of tenementsDuBien(bien)) {
     if (!parcelles.some((p) => ligneTouche(trace, versL93(p.geometrie)))) {
       continue
     }
 
-    const ligne = { tenement: cle, points }
+    const ligne: LigneCoupe = fermee ? { tenement: cle, points, fermee } : { tenement: cle, points }
     const lignes = scenarioCourant(bien).lignes.filter((l) => l.tenement === cle)
-    const avant = signaturesDesLots(parcelles, lignes)
-    if (signaturesDesLots(parcelles, [...lignes, ligne]).size === avant.size) {
+    const brouillon = estBrouillon(ligne, parcelles)
+    if (!brouillon && signaturesDesLots(parcelles, [...lignes, ligne]).size === signaturesDesLots(parcelles, lignes).size) {
       continue
     }
 
     acceptee = true
     scenarioCourant(bien).lignes.push(ligne)
+    const cotes = brouillon ? ['D'] : ['G', 'D']
     scenarioCourant(bien).attributions = scenarioCourant(bien).attributions.flatMap((a) =>
-      a.tenement === cle
-        ? [
-            { ...a, signature: a.signature + 'G' },
-            { ...a, signature: a.signature + 'D' },
-          ]
-        : [a],
+      a.tenement === cle ? cotes.map((c) => ({ ...a, signature: a.signature + c })) : [a],
     )
   }
 

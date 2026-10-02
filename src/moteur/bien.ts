@@ -30,10 +30,13 @@ export interface Prix {
   parHectare: Record<string, number>
 }
 
-// Ligne de coupe d'un Tènement (identifié par sa clé), en WGS84
+// Ligne de coupe d'un Tènement (identifié par sa clé), en WGS84. Ouverte, elle coupe le Tènement de part en
+// part, ou n'est qu'un brouillon qui ne coupe rien si une extrémité est dans le Tènement. Fermée (extrémités
+// reliées), elle découpe la zone qu'elle entoure.
 export interface LigneCoupe {
   tenement: string
   points: Position[]
+  fermee?: boolean
 }
 
 // Un Lot est la partie d'un Tènement située d'un même côté de chacune de ses lignes de coupe :
