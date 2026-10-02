@@ -130,11 +130,11 @@ const acquereur = (id: string | null) => props.bien.acquereurs.find((a) => a.id 
               <option value="eur">€</option>
             </select>
           </td>
-          <td><button type="button" title="Supprimer" @click="supprimer(a.id, a.nom)">✕</button></td>
+          <td><button type="button" class="icone" title="Supprimer" @click="supprimer(a.id, a.nom)">✕</button></td>
         </tr>
       </tbody>
     </table>
-    <form @submit.prevent="ajouter">
+    <form class="saisie" @submit.prevent="ajouter">
       <input v-model="nouveau" placeholder="Nom de l'Acquéreur" />
       <button>Ajouter</button>
     </form>
@@ -157,14 +157,14 @@ const acquereur = (id: string | null) => props.bien.acquereurs.find((a) => a.id 
       </label>
     </details>
     <p>
-      <button type="button" :disabled="!bien.parcelles.length || !bien.acquereurs.length" @click="lancer">
+      <button type="button" class="principal" :disabled="!bien.parcelles.length || !bien.acquereurs.length" @click="lancer">
         Lancer le Découpage automatique
       </button>
     </p>
 
     <table v-if="scenarioCourant(bien).decoupe" class="bilan">
       <thead>
-        <tr><th>Acquéreur</th><th>Surface cadastrale</th><th>Surface mesurée</th><th>Coût</th><th>Objectif</th><th>Écart</th></tr>
+        <tr><th>Acquéreur</th><th class="nombre">Surface cadastrale</th><th class="nombre">Surface mesurée</th><th class="nombre">Coût</th><th class="nombre">Objectif</th><th class="nombre">Écart</th></tr>
       </thead>
       <tbody>
         <tr v-for="a in acquereursOrdonnes(bien)" :key="a.id">
@@ -185,7 +185,7 @@ const acquereur = (id: string | null) => props.bien.acquereurs.find((a) => a.id 
       <summary>Bilan par Lot ({{ bilan.lots.length }})</summary>
       <table>
         <thead>
-          <tr><th>Acquéreur</th><th>Surface mesurée</th><th>Surface cadastrale</th><th>Coût</th></tr>
+          <tr><th>Acquéreur</th><th class="nombre">Surface mesurée</th><th class="nombre">Surface cadastrale</th><th class="nombre">Coût</th></tr>
         </thead>
         <tbody>
           <tr v-for="l in bilan.lots" :key="l.tenement + l.signature">
@@ -216,55 +216,42 @@ const acquereur = (id: string | null) => props.bien.acquereurs.find((a) => a.id 
 </template>
 
 <style scoped>
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-th,
-td {
-  text-align: left;
-  padding: 2px 4px;
-}
 td input {
   width: 100%;
-  box-sizing: border-box;
 }
-.nombre {
-  text-align: right;
+td input[type='number'] {
+  width: 90px;
+}
+td select {
+  padding: 0 4px;
 }
 .poignee {
   cursor: grab;
   white-space: nowrap;
+  color: var(--discret);
 }
-.pastille {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  vertical-align: middle;
+.saisie {
+  margin-top: 8px;
 }
 .bilan {
-  margin-top: 8px;
+  margin-top: 12px;
 }
 .reglage {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 8px;
-  font-size: 14px;
-  margin: 4px 0;
+  margin: 6px 0;
 }
 .reglage input {
   width: 80px;
-  text-align: right;
-}
-.aide {
-  color: #666;
-  font-size: 13px;
 }
 .avertissements {
-  color: #a15c00;
+  margin: 8px 0 0;
+  padding: 8px 10px 8px 26px;
+  color: var(--alerte);
   font-size: 13px;
-  padding-left: 18px;
+  background: #fff8e6;
+  border-radius: var(--rayon);
 }
 </style>

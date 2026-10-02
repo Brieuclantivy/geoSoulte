@@ -52,10 +52,11 @@ function supprimer() {
 .ligne {
   display: flex;
   gap: 6px;
-  margin: 4px 0;
+  margin: 6px 0;
 }
 .ligne select,
 .ligne input {
   flex: 1;
+  min-width: 0;
 }
 </style>

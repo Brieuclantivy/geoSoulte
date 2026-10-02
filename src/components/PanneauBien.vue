@@ -24,7 +24,7 @@ function choisir(commune: Commune) {
 <template>
   <section>
     <h2>Bien</h2>
-    <form @submit.prevent="chercher">
+    <form class="saisie" @submit.prevent="chercher">
       <input v-model="recherche" placeholder="Rechercher une commune" />
       <button>Chercher</button>
     </form>
@@ -39,14 +39,14 @@ function choisir(commune: Commune) {
 
     <table v-if="bilan.parcelles.length">
       <thead>
-        <tr><th>Parcelle</th><th>Tènement</th><th>Contenance</th><th></th></tr>
+        <tr><th>Parcelle</th><th>Tènement</th><th class="nombre">Contenance</th><th></th></tr>
       </thead>
       <tbody>
         <tr v-for="p in bilan.parcelles" :key="p.id">
           <td>{{ p.id }}</td>
           <td>{{ p.tenement + 1 }}</td>
           <td class="nombre">{{ hectares(p.contenance) }}</td>
-          <td><button type="button" title="Retirer" @click="emit('retirer', p.id)">✕</button></td>
+          <td class="nombre"><button type="button" class="icone" title="Retirer" @click="emit('retirer', p.id)">✕</button></td>
         </tr>
       </tbody>
     </table>
@@ -67,40 +67,39 @@ function choisir(commune: Commune) {
 <style scoped>
 .communes {
   list-style: none;
-  padding: 0;
+  margin: 6px 0 0;
+  padding: 4px;
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
 }
 .communes button {
-  background: none;
+  width: 100%;
+  height: auto;
+  padding: 4px 6px;
   border: none;
-  color: #0645ad;
-  cursor: pointer;
-  padding: 2px 0;
+  background: none;
 }
-.aide {
-  color: #666;
-  font-size: 14px;
+.communes button:hover {
+  background: var(--fond-doux);
 }
 table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-th,
-td {
-  text-align: left;
-  padding: 2px 4px;
-}
-.nombre {
-  text-align: right;
+  margin-top: 12px;
 }
 dl {
   display: grid;
-  grid-template-columns: auto auto;
+  grid-template-columns: 1fr auto;
   gap: 2px 12px;
-  font-size: 14px;
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  background: var(--fond-doux);
+  border-radius: var(--rayon);
+}
+dt {
+  color: var(--discret);
 }
 dd {
   margin: 0;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 </style>

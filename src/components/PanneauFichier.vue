@@ -36,7 +36,7 @@ async function importerFichier(e: Event) {
   <section>
     <h2>Fichier</h2>
     <button type="button" @click="exporterFichier">Exporter</button>
-    <label class="import">
+    <label class="bouton import">
       Importer
       <input type="file" accept=".json,application/json" @change="importerFichier" />
     </label>
@@ -46,18 +46,12 @@ async function importerFichier(e: Event) {
 
 <style scoped>
 .import {
-  margin-left: 8px;
-  cursor: pointer;
-  border: 1px solid #767676;
-  border-radius: 2px;
-  padding: 1px 6px;
-  font-size: 13.33px;
-  background: #efefef;
+  margin-left: 6px;
 }
 .import input {
   display: none;
 }
 .erreur {
-  color: #b00;
+  color: var(--erreur);
 }
 </style>

@@ -61,16 +61,11 @@ function parHectare(id: string, e: Event) {
 label {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 8px;
-  font-size: 14px;
-  margin: 4px 0;
+  margin: 6px 0;
 }
 input {
   width: 120px;
-  text-align: right;
-}
-.aide {
-  color: #666;
-  font-size: 13px;
 }
 </style>

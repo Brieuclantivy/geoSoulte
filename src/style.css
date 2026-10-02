@@ -1,7 +1,177 @@
+:root {
+  --texte: #1f2328;
+  --discret: #656d76;
+  --bordure: #d0d7de;
+  --fond-doux: #f6f8fa;
+  --accent: #2d6a4f;
+  --alerte: #9a6700;
+  --erreur: #b42318;
+  --rayon: 6px;
+  --ombre: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
 html,
 body,
 #app {
   margin: 0;
   height: 100%;
   font-family: system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--texte);
+  background: white;
+}
+
+h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+p {
+  margin: 8px 0;
+}
+
+input,
+select,
+button,
+.bouton {
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 8px;
+  font: inherit;
+  color: inherit;
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  background: white;
+}
+input[type='checkbox'] {
+  height: auto;
+  padding: 0;
+}
+input[type='number'] {
+  text-align: right;
+}
+input:focus,
+select:focus,
+button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+
+button,
+.bouton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--fond-doux);
+  cursor: pointer;
+  white-space: nowrap;
+}
+button:hover:not(:disabled),
+.bouton:hover {
+  background: #eaeef2;
+}
+button:disabled {
+  color: var(--discret);
+  opacity: 0.6;
+  cursor: default;
+}
+button.principal {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+button.principal:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 85%, black);
+}
+/* Petit bouton discret (✕ de retrait/suppression) */
+button.icone {
+  height: 24px;
+  padding: 0 6px;
+  border-color: transparent;
+  background: none;
+  color: var(--discret);
+}
+button.icone:hover:not(:disabled) {
+  background: #fdecea;
+  color: var(--erreur);
+}
+
+/* Tableaux du panneau ; le récapitulatif imprimé garde son propre style */
+aside table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+aside th {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--discret);
+  text-align: left;
+  vertical-align: bottom;
+  border-bottom: 1px solid var(--bordure);
+}
+aside th,
+aside td {
+  padding: 4px 6px;
+}
+aside th:first-child,
+aside td:first-child {
+  padding-left: 0;
+}
+aside th:last-child,
+aside td:last-child {
+  padding-right: 0;
+}
+aside tbody tr + tr td {
+  border-top: 1px solid #eef1f4;
+}
+.nombre {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+td.nombre {
+  white-space: nowrap;
+}
+
+details {
+  margin: 10px 0;
+}
+summary {
+  cursor: pointer;
+  color: var(--discret);
+}
+details[open] > summary {
+  margin-bottom: 6px;
+}
+
+.aide {
+  color: var(--discret);
+  font-size: 13px;
+}
+
+.pastille {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+/* Les contrôles d'OpenLayers sont dimensionnés en em : on garde leur taille d'origine */
+.ol-control {
+  font-size: 16px;
+}
+
+/* Champ + bouton côte à côte (recherche, ajout) */
+.saisie {
+  display: flex;
+  gap: 6px;
+}
+.saisie input {
+  flex: 1;
+  min-width: 0;
 }

@@ -399,44 +399,63 @@ defineExpose({ centrerSur })
 <style scoped>
 .outils {
   position: absolute;
-  top: 8px;
+  top: 10px;
   left: 48px;
+  /* Laisse la place à l'encart Fonds : les boutons passent à la ligne sur écran étroit */
+  right: 160px;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  pointer-events: none;
+}
+.outils > * {
+  pointer-events: auto;
+}
+.outils button {
+  height: auto;
+  min-height: 30px;
+  white-space: normal;
+  background: white;
+  box-shadow: var(--ombre);
 }
 .outils .aide {
   background: white;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
 }
 .menu {
   position: absolute;
   background: white;
-  border: 1px solid #999;
-  border-radius: 4px;
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
   padding: 4px;
   display: flex;
   flex-direction: column;
   gap: 2px;
   font-size: 13px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 .menu .titre {
-  color: #666;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--discret);
 }
 .menu button {
+  height: 28px;
+  border: none;
+  background: none;
   text-align: left;
+}
+.menu button:hover {
+  background: var(--fond-doux);
 }
 .menu .retrait {
   margin-top: 4px;
-}
-.pastille {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+  border-top: 1px solid var(--bordure);
+  border-radius: 0 0 var(--rayon) var(--rayon);
+  color: var(--erreur);
 }
 .carte {
   position: relative;
@@ -448,15 +467,36 @@ defineExpose({ centrerSur })
 }
 .fonds {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 10px;
+  right: 10px;
+  margin: 0;
+  padding: 8px 12px;
   background: white;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  border: none;
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+  font-size: 13px;
+}
+/* Légende flottante : placée dans le cadre plutôt qu'à cheval sur sa bordure */
+.fonds legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--discret);
+}
+.fonds label {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 14px;
+  align-items: center;
+  gap: 6px;
+  clear: left;
+  padding: 1px 0;
+  cursor: pointer;
+}
+.fonds input {
+  margin: 0;
 }
 /* En dernier : l'emporte sur les règles d'affichage ci-dessus */
 @media print {

@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
-import Carte from './components/Carte.vue'
-import PanneauBien from './components/PanneauBien.vue'
-import PanneauFichier from './components/PanneauFichier.vue'
-import PanneauAcquereurs from './components/PanneauAcquereurs.vue'
-import PanneauPrix from './components/PanneauPrix.vue'
-import PanneauScenarios from './components/PanneauScenarios.vue'
-import Recapitulatif from './components/Recapitulatif.vue'
-import { parcelleEn, type Commune } from './cadastre'
+import { computed, reactive, ref, watch } from "vue";
+import Carte from "./components/Carte.vue";
+import PanneauBien from "./components/PanneauBien.vue";
+import PanneauFichier from "./components/PanneauFichier.vue";
+import PanneauAcquereurs from "./components/PanneauAcquereurs.vue";
+import PanneauPrix from "./components/PanneauPrix.vue";
+import PanneauScenarios from "./components/PanneauScenarios.vue";
+import Recapitulatif from "./components/Recapitulatif.vue";
+import { parcelleEn, type Commune } from "./cadastre";
 import {
   ajouterParcelle,
   bilanBien,
@@ -17,80 +17,98 @@ import {
   scenariosTouchesParRetrait,
   type Bien,
   type Scenario,
-} from './moteur/bien'
-import { bilanScenario, modifierLigne } from './moteur/decoupage'
-import { chargerSauvegarde, sauvegarder } from './persistance'
+} from "./moteur/bien";
+import { bilanScenario, modifierLigne } from "./moteur/decoupage";
+import { chargerSauvegarde, sauvegarder } from "./persistance";
 
-const bien = reactive(chargerSauvegarde() ?? creerBien())
-watch(bien, () => sauvegarder(bien), { deep: true })
-const bilan = computed(() => bilanBien(bien))
+const bien = reactive(chargerSauvegarde() ?? creerBien());
+watch(bien, () => sauvegarder(bien), { deep: true });
+const bilan = computed(() => bilanBien(bien));
 // Aperçu d'une ligne de coupe en cours de déplacement (non encore appliqué au Bien)
-const apercu = ref<{ index: number; points: number[][] } | null>(null)
+const apercu = ref<{ index: number; points: number[][] } | null>(null);
 const scenario = computed(() => {
   if (apercu.value) {
-    const copie = { ...bien, scenarios: bien.scenarios.map((s) => (s.id === bien.courant ? { ...s } : s)) }
+    const copie = {
+      ...bien,
+      scenarios: bien.scenarios.map((s) =>
+        s.id === bien.courant ? { ...s } : s,
+      ),
+    };
     if (modifierLigne(copie, apercu.value.index, apercu.value.points)) {
-      return bilanScenario(copie)
+      return bilanScenario(copie);
     }
   }
 
-  return bilanScenario(bien)
-})
+  return bilanScenario(bien);
+});
 
 function ligne(index: number, points: number[][], final: boolean) {
   if (final) {
-    apercu.value = null
-    modifierLigne(bien, index, points)
+    apercu.value = null;
+    modifierLigne(bien, index, points);
   } else {
-    apercu.value = { index, points }
+    apercu.value = { index, points };
   }
 }
-const carte = ref<InstanceType<typeof Carte>>()
-const chargement = ref(false)
+const carte = ref<InstanceType<typeof Carte>>();
+const chargement = ref(false);
 
 function centrer(commune: Commune) {
-  carte.value?.centrerSur(...commune.centre)
+  carte.value?.centrerSur(...commune.centre);
 }
 
 function imprimer() {
-  window.print()
+  window.print();
 }
 
 function remplacer(nouveau: Bien) {
-  Object.assign(bien, nouveau)
+  Object.assign(bien, nouveau);
 }
 
 // Changer les Parcelles efface le Découpage du Tènement concerné dans tous les Scénarios : on ne demande
 // confirmation que s'il y a un Découpage à perdre
 function confirmer(question: string, touches: Scenario[]): boolean {
   if (!touches.length) {
-    return true
+    return true;
   }
 
-  const noms = touches.map((s) => `« ${s.nom} »`).join(', ')
-  return confirm(`${question} Le Découpage de son Tènement sera effacé dans : ${noms}.`)
+  const noms = touches.map((s) => `« ${s.nom} »`).join(", ");
+  return confirm(
+    `${question} Le Découpage de son Tènement sera effacé dans : ${noms}.`,
+  );
 }
 
 function retirer(id: string) {
-  if (confirmer(`Retirer la Parcelle ${id} du Bien ?`, scenariosTouchesParRetrait(bien, id))) {
-    retirerParcelle(bien, id)
+  if (
+    confirmer(
+      `Retirer la Parcelle ${id} du Bien ?`,
+      scenariosTouchesParRetrait(bien, id),
+    )
+  ) {
+    retirerParcelle(bien, id);
   }
 }
 
 async function clic(lon: number, lat: number, idParcelle: string | null) {
   if (idParcelle) {
-    retirer(idParcelle)
-    return
+    retirer(idParcelle);
+    return;
   }
 
-  chargement.value = true
+  chargement.value = true;
   try {
-    const parcelle = await parcelleEn(lon, lat)
-    if (parcelle && confirmer(`Ajouter la Parcelle ${parcelle.id} au Bien ?`, scenariosTouchesParAjout(bien, parcelle))) {
-      ajouterParcelle(bien, parcelle)
+    const parcelle = await parcelleEn(lon, lat);
+    if (
+      parcelle &&
+      confirmer(
+        `Ajouter la Parcelle ${parcelle.id} au Bien ?`,
+        scenariosTouchesParAjout(bien, parcelle),
+      )
+    ) {
+      ajouterParcelle(bien, parcelle);
     }
   } finally {
-    chargement.value = false
+    chargement.value = false;
   }
 }
 </script>
@@ -99,18 +117,43 @@ async function clic(lon: number, lat: number, idParcelle: string | null) {
   <div class="app">
     <aside>
       <header>
-        <strong>geoSoulte</strong>
-        <button type="button" @click="imprimer">Imprimer le récapitulatif</button>
-        <p class="indicatif">Simulation purement indicative : ni plan de géomètre, ni document officiel.</p>
+        <h1>GéoSoulte</h1>
+        <button type="button" @click="imprimer">
+          Imprimer le récapitulatif
+        </button>
+        <p class="indicatif">
+          Simulation purement indicative : ni plan de géomètre, ni document
+          officiel.
+        </p>
       </header>
-      <PanneauBien :bilan="bilan" :chargement="chargement" @commune="centrer" @retirer="retirer" />
-      <PanneauPrix :bien="bien" :ecart-avant-recalage="scenario.ecartAvantRecalage" />
+      <PanneauBien
+        :bilan="bilan"
+        :chargement="chargement"
+        @commune="centrer"
+        @retirer="retirer"
+      />
+      <PanneauPrix
+        :bien="bien"
+        :ecart-avant-recalage="scenario.ecartAvantRecalage"
+      />
+      <PanneauAcquereurs
+        :bien="bien"
+        :bilan="scenario"
+        :tenements="bilan.tenements"
+      />
       <PanneauScenarios :bien="bien" />
-      <PanneauAcquereurs :bien="bien" :bilan="scenario" :tenements="bilan.tenements" />
       <PanneauFichier :bien="bien" @importe="remplacer" />
     </aside>
     <main>
-      <Carte ref="carte" :bien="bien" :bilan="bilan" :scenario="scenario" @clic="clic" @ligne="ligne" @retirer="retirer" />
+      <Carte
+        ref="carte"
+        :bien="bien"
+        :bilan="bilan"
+        :scenario="scenario"
+        @clic="clic"
+        @ligne="ligne"
+        @retirer="retirer"
+      />
       <Recapitulatif :bien="bien" :bilan="bilan" :scenario="scenario" />
     </main>
   </div>
@@ -122,11 +165,11 @@ async function clic(lon: number, lat: number, idParcelle: string | null) {
   height: 100%;
 }
 aside {
-  width: 440px;
+  width: 460px;
   overflow-y: auto;
-  padding: 8px 12px;
+  padding: 0 20px;
   box-sizing: border-box;
-  border-right: 1px solid #ccc;
+  border-right: 1px solid var(--bordure);
 }
 main {
   flex: 1;
@@ -136,15 +179,23 @@ header {
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 4px;
-  border-bottom: 1px solid #ccc;
-  padding-bottom: 6px;
+  gap: 4px 8px;
+  padding: 16px 0 14px;
+}
+h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
 }
 .indicatif {
   margin: 0;
   width: 100%;
   font-size: 12px;
-  color: #a15c00;
+  color: var(--alerte);
+}
+aside > section {
+  padding: 16px 0;
+  border-top: 1px solid var(--bordure);
 }
 
 /* Téléphone : la carte au-dessus, les panneaux en dessous */
@@ -156,6 +207,10 @@ header {
   aside {
     width: 100%;
     border-right: none;
+  }
+  /* Les tableaux larges (bilan) défilent dans leur section plutôt que la page entière */
+  aside > section {
+    overflow-x: auto;
   }
   main {
     height: 60vh;

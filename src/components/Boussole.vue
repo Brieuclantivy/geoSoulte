@@ -54,12 +54,12 @@ function deplacement(e: PointerEvent) {
 <style scoped>
 .boussole {
   position: absolute;
-  left: 8px;
-  bottom: 8px;
+  left: 10px;
+  bottom: 10px;
   background: white;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 4px;
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+  padding: 8px;
   text-align: center;
   font-size: 12px;
 }
@@ -67,19 +67,32 @@ function deplacement(e: PointerEvent) {
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  border: 1px solid #999;
+  border: 1px solid var(--bordure);
+  background: var(--fond-doux);
   cursor: grab;
   touch-action: none;
+}
+.legende {
+  margin-top: 4px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+}
+.legende button {
+  height: 22px;
+  padding: 0 6px;
+  font-size: 12px;
 }
 svg {
   width: 100%;
   height: 100%;
 }
 line {
-  stroke: #222;
+  stroke: var(--texte);
   stroke-width: 6;
 }
 polygon {
-  fill: #222;
+  fill: var(--texte);
 }
 </style>

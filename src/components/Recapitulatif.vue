@@ -1,34 +1,55 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { acquereursOrdonnes, scenarioCourant, type Bien, type BilanBien } from '../moteur/bien'
-import type { BilanScenario } from '../moteur/decoupage'
-import { euros, hectares } from '../format'
+import { computed } from "vue";
+import {
+  acquereursOrdonnes,
+  scenarioCourant,
+  type Bien,
+  type BilanBien,
+} from "../moteur/bien";
+import type { BilanScenario } from "../moteur/decoupage";
+import { euros, hectares } from "../format";
 
-const props = defineProps<{ bien: Bien; bilan: BilanBien; scenario: BilanScenario }>()
+const props = defineProps<{
+  bien: Bien;
+  bilan: BilanBien;
+  scenario: BilanScenario;
+}>();
 
 const lignes = computed(() =>
   acquereursOrdonnes(props.bien).map((a) => {
-    const b = props.scenario.acquereurs.find((x) => x.id === a.id)!
-    let ecart = ''
+    const b = props.scenario.acquereurs.find((x) => x.id === a.id)!;
+    let ecart = "";
     if (b.objectif && b.ecart !== null) {
-      ecart = b.objectif.unite === 'ha' ? hectares(b.ecart) : euros(b.ecart)
+      ecart = b.objectif.unite === "ha" ? hectares(b.ecart) : euros(b.ecart);
     }
 
-    return { ...a, ...b, ecart, nbLots: props.scenario.lots.filter((l) => l.acquereur === a.id).length }
+    return {
+      ...a,
+      ...b,
+      ecart,
+      nbLots: props.scenario.lots.filter((l) => l.acquereur === a.id).length,
+    };
   }),
-)
+);
 const totalCout = computed(() =>
-  props.scenario.acquereurs.some((a) => a.cout !== null) ? props.scenario.acquereurs.reduce((t, a) => t + (a.cout ?? 0), 0) : null,
-)
+  props.scenario.acquereurs.some((a) => a.cout !== null)
+    ? props.scenario.acquereurs.reduce((t, a) => t + (a.cout ?? 0), 0)
+    : null,
+);
 </script>
 
 <template>
   <section class="recap">
-    <h1>geoSoulte — {{ scenarioCourant(bien).nom }}</h1>
-    <p class="indicatif">Simulation purement indicative : ni plan de géomètre, ni document officiel.</p>
+    <h1>GéoSoulte — {{ scenarioCourant(bien).nom }}</h1>
+    <p class="indicatif">
+      Simulation purement indicative : ni plan de géomètre, ni document
+      officiel.
+    </p>
     <p>
-      Bien de {{ bilan.parcelles.length }} Parcelle(s), {{ bilan.tenements.length }} Tènement(s) — Contenance
-      {{ hectares(bilan.contenance) }}, Surface mesurée {{ hectares(bilan.surfaceMesuree) }}.
+      Bien de {{ bilan.parcelles.length }} Parcelle(s),
+      {{ bilan.tenements.length }} Tènement(s) — Contenance
+      {{ hectares(bilan.contenance) }}, Surface mesurée
+      {{ hectares(bilan.surfaceMesuree) }}.
     </p>
     <table>
       <thead>
@@ -43,11 +64,14 @@ const totalCout = computed(() =>
       </thead>
       <tbody>
         <tr v-for="l in lignes" :key="l.id">
-          <td><span class="pastille" :style="{ background: l.couleur }"></span> {{ l.nom }}</td>
+          <td>
+            <span class="pastille" :style="{ background: l.couleur }"></span>
+            {{ l.nom }}
+          </td>
           <td>{{ l.nbLots }}</td>
           <td>{{ hectares(l.surfaceCadastrale) }}</td>
           <td>{{ hectares(l.surfaceMesuree) }}</td>
-          <td>{{ l.cout === null ? '—' : euros(l.cout) }}</td>
+          <td>{{ l.cout === null ? "—" : euros(l.cout) }}</td>
           <td>{{ l.ecart }}</td>
         </tr>
       </tbody>
