@@ -1,5 +1,6 @@
 // Outils de test : construit des Parcelles à partir de rectangles exprimés en Lambert 93 (mètres)
 import proj4 from 'proj4'
+import type { Position } from 'geojson'
 import type { Parcelle } from './bien'
 
 const L93 =
@@ -23,4 +24,10 @@ export function rectangle(id: string, x: number, y: number, largeur: number, hau
     geometrie: { type: 'Polygon', coordinates: [coins] },
     contenance: contenance ?? largeur * hauteur,
   }
+}
+
+// Inverse de `rectangle` : position WGS84 → coordonnées locales (mètres) du jeu de test
+export function enLocal(p: Position): Position {
+  const [x, y] = versWgs84.inverse(p)
+  return [x - X0, y - Y0]
 }

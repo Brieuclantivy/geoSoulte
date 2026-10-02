@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import {
+  acquereursOrdonnes,
   ajouterAcquereur,
   fixerObjectif,
+  fixerOrdre,
   fixerTolerance,
   renommerAcquereur,
   supprimerAcquereur,
@@ -53,6 +55,23 @@ function supprimer(id: string, nom: string) {
   }
 }
 
+// Glisser-déposer des lignes pour fixer l'ordre des Acquéreurs dans les bandes
+let glisse: string | null = null
+
+function saisir(id: string) {
+  glisse = id
+}
+
+function deposer(cible: string) {
+  if (!glisse || glisse === cible) {
+    return
+  }
+
+  const ordre = acquereursOrdonnes(props.bien).map((a) => a.id).filter((id) => id !== glisse)
+  ordre.splice(ordre.indexOf(cible), 0, glisse)
+  fixerOrdre(props.bien, ordre)
+}
+
 const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
 </script>
 
@@ -64,8 +83,15 @@ const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
         <tr><th></th><th>Nom</th><th colspan="2">Objectif</th><th></th></tr>
       </thead>
       <tbody>
-        <tr v-for="a in bien.acquereurs" :key="a.id">
-          <td><span class="pastille" :style="{ background: a.couleur }"></span></td>
+        <tr
+          v-for="a in acquereursOrdonnes(bien)"
+          :key="a.id"
+          @dragover.prevent
+          @drop="deposer(a.id)"
+        >
+          <td class="poignee" title="Glisser pour changer l'ordre des bandes" draggable="true" @dragstart="saisir(a.id)">
+            ⠿ <span class="pastille" :style="{ background: a.couleur }"></span>
+          </td>
           <td><input :value="a.nom" @change="renommerAcquereur(bien, a.id, ($event.target as HTMLInputElement).value)" /></td>
           <td>
             <input
@@ -120,7 +146,7 @@ const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
         <tr><th>Acquéreur</th><th>Surface cadastrale</th><th>Surface mesurée</th><th>Coût</th><th>Objectif</th></tr>
       </thead>
       <tbody>
-        <tr v-for="a in bien.acquereurs" :key="a.id">
+        <tr v-for="a in acquereursOrdonnes(bien)" :key="a.id">
           <td><span class="pastille" :style="{ background: a.couleur }"></span> {{ a.nom }}</td>
           <td class="nombre">{{ hectares(bilanDe(a.id)!.surfaceCadastrale) }}</td>
           <td class="nombre">{{ hectares(bilanDe(a.id)!.surfaceMesuree) }}</td>
@@ -156,6 +182,10 @@ td input {
 }
 .nombre {
   text-align: right;
+}
+.poignee {
+  cursor: grab;
+  white-space: nowrap;
 }
 .pastille {
   display: inline-block;

@@ -50,6 +50,10 @@ export interface Scenario {
   tolerance: number
   // Attributions verrouillées : clé de Tènement → Acquéreur
   verrouillages: Record<string, string>
+  // Direction d'avancée des bandes, en degrés (0 = vers l'est, 90 = vers le nord) ; null : côté le plus long
+  orientation: number | null
+  // Ordre des Acquéreurs dans les bandes ; les Acquéreurs absents passent ensuite
+  ordre: string[]
   lignes: LigneCoupe[]
   attributions: Attribution[]
 }
@@ -92,7 +96,15 @@ export function creerBien(): Bien {
     parcelles: [],
     prix: { total: null, parHectareDefaut: null, parHectare: {} },
     acquereurs: [],
-    scenario: { objectifs: {}, tolerance: 0.05, verrouillages: {}, lignes: [], attributions: [] },
+    scenario: {
+      objectifs: {},
+      tolerance: 0.05,
+      verrouillages: {},
+      orientation: null,
+      ordre: [],
+      lignes: [],
+      attributions: [],
+    },
   }
 }
 
@@ -118,6 +130,7 @@ export function renommerAcquereur(bien: Bien, id: string, nom: string): void {
 export function supprimerAcquereur(bien: Bien, id: string): void {
   bien.acquereurs = bien.acquereurs.filter((a) => a.id !== id)
   delete bien.scenario.objectifs[id]
+  bien.scenario.ordre = bien.scenario.ordre.filter((a) => a !== id)
   for (const [tenement, acquereur] of Object.entries(bien.scenario.verrouillages)) {
     if (acquereur === id) {
       delete bien.scenario.verrouillages[tenement]
@@ -126,6 +139,23 @@ export function supprimerAcquereur(bien: Bien, id: string): void {
 
   bien.scenario.lignes = []
   bien.scenario.attributions = []
+}
+
+export function fixerOrientation(bien: Bien, degres: number | null): void {
+  bien.scenario.orientation = degres
+}
+
+export function fixerOrdre(bien: Bien, ordre: string[]): void {
+  bien.scenario.ordre = ordre
+}
+
+// Acquéreurs dans l'ordre du Scénario
+export function acquereursOrdonnes(bien: Bien): Acquereur[] {
+  const rang = (a: Acquereur) => {
+    const i = bien.scenario.ordre.indexOf(a.id)
+    return i === -1 ? Infinity : i
+  }
+  return [...bien.acquereurs].sort((a, b) => rang(a) - rang(b))
 }
 
 export function fixerTolerance(bien: Bien, tolerance: number): void {

@@ -1,8 +1,19 @@
 import type { MultiPolygon, Position } from 'geojson'
 import { difference, intersection, union, type Geom } from 'polyclip-ts'
-import { tenementsDuBien, type Bien, type LigneCoupe, type Objectif, type Parcelle } from './bien'
+import { acquereursOrdonnes, tenementsDuBien, type Bien, type LigneCoupe, type Objectif, type Parcelle } from './bien'
 import { prixEffectifs, type PrixEffectifs } from './prix'
-import { aire, boite, pointVersL93, pointVersWgs84, polygonesVersWgs84, versL93, type PolygonesL93 } from './geo'
+import {
+  aire,
+  axeLong,
+  boite,
+  pointVersL93,
+  pointVersWgs84,
+  polygonesVersWgs84,
+  tourner,
+  tournerPolygones,
+  versL93,
+  type PolygonesL93,
+} from './geo'
 
 export interface BilanLot {
   tenement: string
@@ -157,7 +168,7 @@ function parts(bien: Bien, prix: PrixEffectifs): { parts: Part[]; avertissements
   const contenance = bien.parcelles.reduce((t, p) => t + p.contenance, 0)
   const avertissements: string[] = []
   const brutes: Part[] = []
-  for (const a of bien.acquereurs) {
+  for (const a of acquereursOrdonnes(bien)) {
     const objectif = bien.scenario.objectifs[a.id]
     if (!objectif || objectif.valeur <= 0) {
       continue
@@ -221,13 +232,13 @@ const RELIQUAT = 1
 // 1. les Tènements verrouillés vont en entier à leur Acquéreur ;
 // 2. du plus grand au plus petit, un Tènement va en entier à l'Acquéreur le plus loin de son Objectif,
 //    s'il y tient à la tolérance près ;
-// 3. les Tènements restants sont découpés en bandes parallèles (lignes nord-sud, d'ouest en est) que les
-//    Acquéreurs remplissent dans leur ordre, chacun jusqu'à son Objectif, mesuré en Surface cadastrale
+// 3. les Tènements restants sont découpés en bandes parallèles, avançant selon l'orientation du Scénario
+//    (par défaut le grand côté du Tènement), que les Acquéreurs remplissent dans leur ordre, chacun jusqu'à son Objectif, mesuré en Surface cadastrale
 //    (Objectif en ha) ou en Coût (Objectif en €).
 export function lancerDecoupage(bien: Bien): void {
   const prix = prixEffectifs(bien)
   const participants = parts(bien, prix).parts
-  const { verrouillages, tolerance } = bien.scenario
+  const { verrouillages, tolerance, orientation } = bien.scenario
   bien.scenario.lignes = []
   bien.scenario.attributions = []
 
@@ -285,8 +296,14 @@ export function lancerDecoupage(bien: Bien): void {
 
   // 3. Bandes
   for (const t of libres.filter((l) => aDecouper.includes(l))) {
-    const [x0, y0, x1, y1] = boite(t.parcelles.map((p) => p.geometrie).flat())
-    const mesure = (unite: Objectif['unite'], x: number) => mesureAvant(t.parcelles, unite, x, [y0, y1])
+    // On travaille dans un repère tourné où les bandes avancent vers les x croissants
+    const geometries = t.parcelles.map((p) => p.geometrie)
+    const angle = orientation === null ? axeLong(geometries.flat()) : (orientation * Math.PI) / 180
+    const [bx0, by0, bx1, by1] = boite(geometries.flat())
+    const pivot = [(bx0 + bx1) / 2, (by0 + by1) / 2]
+    const parcelles = t.parcelles.map((p) => ({ ...p, geometrie: tournerPolygones(p.geometrie, -angle, pivot) }))
+    const [x0, y0, x1, y1] = boite(parcelles.map((p) => p.geometrie).flat())
+    const mesure = (unite: Objectif['unite'], x: number) => mesureAvant(parcelles, unite, x, [y0, y1])
     const proprietaires: string[] = []
     let precedente = x0
     for (const a of participants) {
@@ -320,10 +337,13 @@ export function lancerDecoupage(bien: Bien): void {
 
       prendre(a.id, restants.get(a.id)!)
       precedente = bas
-      // Ligne parcourue du sud au nord : sa gauche est l'ouest, côté des bandes précédentes
+      // Ligne orientée de sorte que sa gauche soit du côté des bandes précédentes
       bien.scenario.lignes.push({
         tenement: t.cle,
-        points: [pointVersWgs84([bas, y0 - 1]), pointVersWgs84([bas, y1 + 1])],
+        points: [
+          [bas, y0 - 1],
+          [bas, y1 + 1],
+        ].map((p) => pointVersWgs84(tourner(p, angle, pivot))),
       })
     }
 

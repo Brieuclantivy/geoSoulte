@@ -9,7 +9,8 @@ import XYZ from 'ol/source/XYZ'
 import GeoJSON from 'ol/format/GeoJSON'
 import { Fill, Stroke, Style } from 'ol/style'
 import { fromLonLat, toLonLat } from 'ol/proj'
-import type { Bien, BilanBien } from '../moteur/bien'
+import { fixerOrientation, type Bien, type BilanBien } from '../moteur/bien'
+import Boussole from './Boussole.vue'
 import type { BilanScenario } from '../moteur/decoupage'
 
 const props = defineProps<{ bien: Bien; bilan: BilanBien; scenario: BilanScenario }>()
@@ -134,6 +135,7 @@ defineExpose({ centrerSur })
 <template>
   <div class="carte">
     <div ref="cible" class="ol"></div>
+    <Boussole :orientation="bien.scenario.orientation" @change="(o) => fixerOrientation(bien, o)" />
     <fieldset class="fonds">
       <legend>Fonds</legend>
       <label><input v-model="visibles.orthophoto" type="checkbox" /> Orthophoto</label>

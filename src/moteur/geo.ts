@@ -87,3 +87,59 @@ export function polygonesVersWgs84(polygones: PolygonesL93): MultiPolygon {
     coordinates: polygones.map((anneaux) => anneaux.map((anneau) => anneau.map(pointVersWgs84))),
   }
 }
+
+export function tourner(p: Position, angle: number, pivot: Position): Position {
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  const x = p[0] - pivot[0]
+  const y = p[1] - pivot[1]
+  return [pivot[0] + x * cos - y * sin, pivot[1] + x * sin + y * cos]
+}
+
+export function tournerPolygones(polygones: PolygonesL93, angle: number, pivot: Position): PolygonesL93 {
+  return polygones.map((anneaux) => anneaux.map((anneau) => anneau.map((p) => tourner(p, angle, pivot))))
+}
+
+function enveloppeConvexe(points: Position[]): Position[] {
+  const tries = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1])
+  const croix = (o: Position, a: Position, b: Position) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+  const demi = (liste: Position[]) => {
+    const h: Position[] = []
+    for (const p of liste) {
+      while (h.length >= 2 && croix(h[h.length - 2], h[h.length - 1], p) <= 0) {
+        h.pop()
+      }
+
+      h.push(p)
+    }
+    return h.slice(0, -1)
+  }
+  return [...demi(tries), ...demi([...tries].reverse())]
+}
+
+// Direction (radians, dans ]-π/2, π/2]) du grand côté du plus petit rectangle englobant les polygones
+export function axeLong(polygones: PolygonesL93): number {
+  const enveloppe = enveloppeConvexe(polygones.flat(2))
+  let meilleur = { aire: Infinity, angle: 0 }
+  for (let i = 0; i < enveloppe.length; i++) {
+    const a = enveloppe[i]
+    const b = enveloppe[(i + 1) % enveloppe.length]
+    const angle = Math.atan2(b[1] - a[1], b[0] - a[0])
+    const tournes = enveloppe.map((p) => tourner(p, -angle, [0, 0]))
+    const [x0, y0, x1, y1] = boite([[tournes]])
+    const aireRectangle = (x1 - x0) * (y1 - y0)
+    if (aireRectangle < meilleur.aire) {
+      meilleur = { aire: aireRectangle, angle: x1 - x0 >= y1 - y0 ? angle : angle + Math.PI / 2 }
+    }
+  }
+
+  // Ramène la direction dans ]-π/2, π/2]
+  let angle = meilleur.angle % Math.PI
+  if (angle <= -Math.PI / 2) {
+    angle += Math.PI
+  } else if (angle > Math.PI / 2) {
+    angle -= Math.PI
+  }
+
+  return angle
+}
