@@ -10,8 +10,9 @@ import GeoJSON from 'ol/format/GeoJSON'
 import { Fill, Stroke, Style } from 'ol/style'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import type { Bien, BilanBien } from '../moteur/bien'
+import type { BilanScenario } from '../moteur/decoupage'
 
-const props = defineProps<{ bien: Bien; bilan: BilanBien }>()
+const props = defineProps<{ bien: Bien; bilan: BilanBien; scenario: BilanScenario }>()
 const emit = defineEmits<{
   // idParcelle : la Parcelle du Bien cliquée, ou null si le clic est hors du Bien
   clic: [lon: number, lat: number, idParcelle: string | null]
@@ -78,13 +79,42 @@ watch(
   { immediate: true },
 )
 
+// Lots du Découpage, colorés par Acquéreur
+const sourceLots = new VectorSource()
+const coucheLots = new VectorLayer({
+  source: sourceLots,
+  style: (feature) =>
+    new Style({
+      stroke: new Stroke({ color: 'white', width: 2 }),
+      fill: new Fill({ color: feature.get('couleur') + '99' }),
+    }),
+})
+watch(
+  () => props.scenario,
+  (scenario) => {
+    sourceLots.clear()
+    for (const lot of scenario.lots) {
+      const couleur = props.bien.acquereurs.find((a) => a.id === lot.acquereur)?.couleur
+      if (!couleur) {
+        continue
+      }
+
+      const feature = geojson.readFeature({ type: 'Feature', geometry: lot.geometrie, properties: { couleur } })
+      if (!Array.isArray(feature)) {
+        sourceLots.addFeature(feature)
+      }
+    }
+  },
+  { immediate: true },
+)
+
 const cible = ref<HTMLDivElement>()
 let carte: OlMap
 
 onMounted(() => {
   carte = new OlMap({
     target: cible.value,
-    layers: [couches.orthophoto, couches.rpg, couches.cadastre, coucheBien],
+    layers: [couches.orthophoto, couches.rpg, couches.cadastre, coucheBien, coucheLots],
     view: new View({ center: fromLonLat([2.5, 46.6]), zoom: 6 }),
   })
   carte.on('singleclick', (e) => {

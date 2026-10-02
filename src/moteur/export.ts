@@ -1,4 +1,4 @@
-import type { Bien } from './bien'
+import { creerBien, type Bien } from './bien'
 
 // Version du format d'export ; à incrémenter (avec une migration) quand la structure du Bien change
 const VERSION = 1
@@ -13,5 +13,6 @@ export function importer(json: string): Bien {
     throw new Error("Ce fichier n'est pas un export geoSoulte valide")
   }
 
-  return donnees.bien
+  // Les champs absents des exports antérieurs prennent leur valeur par défaut
+  return { ...creerBien(), ...donnees.bien }
 }

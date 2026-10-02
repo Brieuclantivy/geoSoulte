@@ -1,3 +1,4 @@
+import type { Position } from 'geojson'
 import { aire, versL93, voisines, type Geometrie } from './geo'
 
 // Écart maximal (m) entre deux Parcelles considérées comme contiguës, pour absorber les imprécisions du cadastre
@@ -10,8 +11,41 @@ export interface Parcelle {
   contenance: number
 }
 
+export interface Acquereur {
+  id: string
+  nom: string
+  couleur: string
+}
+
+export interface Objectif {
+  unite: 'ha'
+  valeur: number
+}
+
+// Ligne de coupe d'un Tènement (identifié par sa clé), en WGS84
+export interface LigneCoupe {
+  tenement: string
+  points: Position[]
+}
+
+// Un Lot est la partie d'un Tènement située d'un même côté de chacune de ses lignes de coupe :
+// sa signature note ce côté ('G' gauche, 'D' droite) pour chaque ligne, dans l'ordre des lignes du Tènement
+export interface Attribution {
+  tenement: string
+  signature: string
+  acquereur: string
+}
+
+export interface Scenario {
+  objectifs: Record<string, Objectif>
+  lignes: LigneCoupe[]
+  attributions: Attribution[]
+}
+
 export interface Bien {
   parcelles: Parcelle[]
+  acquereurs: Acquereur[]
+  scenario: Scenario
 }
 
 export interface BilanParcelle {
@@ -37,8 +71,36 @@ export interface BilanBien {
   ecart: number
 }
 
+const COULEURS_ACQUEREURS = ['#e6194b', '#4363d8', '#3cb44b', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#9a6324']
+
 export function creerBien(): Bien {
-  return { parcelles: [] }
+  return { parcelles: [], acquereurs: [], scenario: { objectifs: {}, lignes: [], attributions: [] } }
+}
+
+export function ajouterAcquereur(bien: Bien, nom: string): string {
+  const numero = Math.max(0, ...bien.acquereurs.map((a) => Number(a.id.slice(1)))) + 1
+  const id = `a${numero}`
+  bien.acquereurs.push({ id, nom, couleur: COULEURS_ACQUEREURS[(numero - 1) % COULEURS_ACQUEREURS.length] })
+  return id
+}
+
+export function renommerAcquereur(bien: Bien, id: string, nom: string): void {
+  const acquereur = bien.acquereurs.find((a) => a.id === id)
+  if (acquereur) {
+    acquereur.nom = nom
+  }
+}
+
+// Le Découpage n'a plus de sens sans cet Acquéreur : il est effacé et devra être relancé
+export function supprimerAcquereur(bien: Bien, id: string): void {
+  bien.acquereurs = bien.acquereurs.filter((a) => a.id !== id)
+  delete bien.scenario.objectifs[id]
+  bien.scenario.lignes = []
+  bien.scenario.attributions = []
+}
+
+export function fixerObjectif(bien: Bien, acquereur: string, objectif: Objectif): void {
+  bien.scenario.objectifs[acquereur] = objectif
 }
 
 export function ajouterParcelle(bien: Bien, parcelle: Parcelle): void {
@@ -51,6 +113,14 @@ export function ajouterParcelle(bien: Bien, parcelle: Parcelle): void {
 
 export function retirerParcelle(bien: Bien, id: string): void {
   bien.parcelles = bien.parcelles.filter((p) => p.id !== id)
+}
+
+// Les Tènements du Bien ; la clé d'un Tènement est le plus petit identifiant de ses Parcelles
+export function tenementsDuBien(bien: Bien): { cle: string; parcelles: Parcelle[] }[] {
+  const indices = tenements(bien)
+  const groupes: Parcelle[][] = []
+  bien.parcelles.forEach((p, i) => (groupes[indices[i]] ??= []).push(p))
+  return groupes.map((parcelles) => ({ cle: parcelles.map((p) => p.id).sort()[0], parcelles }))
 }
 
 // Regroupe les Parcelles contiguës (union-find) ; renvoie pour chaque Parcelle l'indice de son Tènement

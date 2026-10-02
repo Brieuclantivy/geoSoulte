@@ -40,7 +40,7 @@ function distancePointSegment(p: Position, a: Position, b: Position): number {
   return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy))
 }
 
-function boite(polygones: PolygonesL93): [number, number, number, number] {
+export function boite(polygones: PolygonesL93): [number, number, number, number] {
   const points = polygones.flat(2)
   const xs = points.map((p) => p[0])
   const ys = points.map((p) => p[1])
@@ -69,4 +69,21 @@ export function voisines(a: PolygonesL93, b: PolygonesL93, tolerance: number): b
   }
 
   return Math.min(distanceSommetsVersBords(a, b), distanceSommetsVersBords(b, a)) <= tolerance
+}
+
+const inverse = proj4(L93, 'WGS84')
+
+export function pointVersL93(p: Position): Position {
+  return projection.forward(p)
+}
+
+export function pointVersWgs84(p: Position): Position {
+  return inverse.forward(p)
+}
+
+export function polygonesVersWgs84(polygones: PolygonesL93): MultiPolygon {
+  return {
+    type: 'MultiPolygon',
+    coordinates: polygones.map((anneaux) => anneaux.map((anneau) => anneau.map(pointVersWgs84))),
+  }
 }
