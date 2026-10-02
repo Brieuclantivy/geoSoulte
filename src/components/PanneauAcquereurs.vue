@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ajouterAcquereur, fixerObjectif, renommerAcquereur, supprimerAcquereur, type Bien } from '../moteur/bien'
+import { ajouterAcquereur, fixerObjectif, renommerAcquereur, supprimerAcquereur, type Bien, type Objectif } from '../moteur/bien'
 import { lancerDecoupage, type BilanScenario } from '../moteur/decoupage'
-import { hectares } from '../format'
+import { euros, hectares, nombreSaisi } from '../format'
 
 const props = defineProps<{ bien: Bien; bilan: BilanScenario }>()
 const nouveau = ref('')
@@ -15,10 +15,19 @@ function ajouter() {
 }
 
 function objectif(id: string, e: Event) {
-  const valeur = (e.target as HTMLInputElement).valueAsNumber
-  if (!Number.isNaN(valeur) && valeur >= 0) {
-    fixerObjectif(props.bien, id, { unite: 'ha', valeur })
+  const valeur = nombreSaisi(e)
+  if (valeur !== null && valeur >= 0) {
+    fixerObjectif(props.bien, id, { unite: props.bien.scenario.objectifs[id]?.unite ?? 'ha', valeur })
   }
+}
+
+function unite(id: string, e: Event) {
+  const unite = (e.target as HTMLSelectElement).value as Objectif['unite']
+  fixerObjectif(props.bien, id, { unite, valeur: props.bien.scenario.objectifs[id]?.valeur ?? 0 })
+}
+
+function enUnite(valeur: number, unite: Objectif['unite']): string {
+  return unite === 'ha' ? hectares(valeur * 10000) : euros(valeur)
 }
 
 function supprimer(id: string, nom: string) {
@@ -35,7 +44,7 @@ const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
     <h2>Acquéreurs</h2>
     <table v-if="bien.acquereurs.length">
       <thead>
-        <tr><th></th><th>Nom</th><th>Objectif (ha)</th><th></th></tr>
+        <tr><th></th><th>Nom</th><th colspan="2">Objectif</th><th></th></tr>
       </thead>
       <tbody>
         <tr v-for="a in bien.acquereurs" :key="a.id">
@@ -50,6 +59,12 @@ const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
               :value="bien.scenario.objectifs[a.id]?.valeur"
               @change="objectif(a.id, $event)"
             />
+          </td>
+          <td>
+            <select :value="bien.scenario.objectifs[a.id]?.unite ?? 'ha'" @change="unite(a.id, $event)">
+              <option value="ha">ha</option>
+              <option value="eur">€</option>
+            </select>
           </td>
           <td><button type="button" title="Supprimer" @click="supprimer(a.id, a.nom)">✕</button></td>
         </tr>
@@ -68,19 +83,25 @@ const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
 
     <table v-if="bilan.lots.some((l) => l.acquereur)" class="bilan">
       <thead>
-        <tr><th>Acquéreur</th><th>Surface cadastrale / Objectif</th><th>Surface mesurée</th></tr>
+        <tr><th>Acquéreur</th><th>Surface cadastrale</th><th>Surface mesurée</th><th>Coût</th><th>Objectif</th></tr>
       </thead>
       <tbody>
         <tr v-for="a in bien.acquereurs" :key="a.id">
           <td><span class="pastille" :style="{ background: a.couleur }"></span> {{ a.nom }}</td>
-          <td class="nombre">
-            {{ hectares(bilanDe(a.id)!.surfaceCadastrale) }}
-            <template v-if="bilanDe(a.id)!.objectif !== null"> / {{ hectares(bilanDe(a.id)!.objectif!) }}</template>
-          </td>
+          <td class="nombre">{{ hectares(bilanDe(a.id)!.surfaceCadastrale) }}</td>
           <td class="nombre">{{ hectares(bilanDe(a.id)!.surfaceMesuree) }}</td>
+          <td class="nombre">{{ bilanDe(a.id)!.cout === null ? '—' : euros(bilanDe(a.id)!.cout!) }}</td>
+          <td class="nombre">
+            <template v-if="bilanDe(a.id)!.objectif">
+              {{ enUnite(bilanDe(a.id)!.objectif!.valeur, bilanDe(a.id)!.objectif!.unite) }}
+            </template>
+          </td>
         </tr>
       </tbody>
     </table>
+    <ul v-if="bilan.avertissements.length" class="avertissements">
+      <li v-for="(a, i) in bilan.avertissements" :key="i">{{ a }}</li>
+    </ul>
   </section>
 </template>
 
@@ -111,5 +132,10 @@ td input {
 }
 .bilan {
   margin-top: 8px;
+}
+.avertissements {
+  color: #a15c00;
+  font-size: 13px;
+  padding-left: 18px;
 }
 </style>

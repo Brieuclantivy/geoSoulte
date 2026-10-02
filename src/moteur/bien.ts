@@ -17,9 +17,17 @@ export interface Acquereur {
   couleur: string
 }
 
+// Objectif d'un Acquéreur, en hectares (de Surface cadastrale) ou en euros (de Coût)
 export interface Objectif {
-  unite: 'ha'
+  unite: 'ha' | 'eur'
   valeur: number
+}
+
+// Prix du Bien en euros : total et/ou à l'hectare (par défaut, et par Parcelle)
+export interface Prix {
+  total: number | null
+  parHectareDefaut: number | null
+  parHectare: Record<string, number>
 }
 
 // Ligne de coupe d'un Tènement (identifié par sa clé), en WGS84
@@ -44,6 +52,7 @@ export interface Scenario {
 
 export interface Bien {
   parcelles: Parcelle[]
+  prix: Prix
   acquereurs: Acquereur[]
   scenario: Scenario
 }
@@ -74,7 +83,16 @@ export interface BilanBien {
 const COULEURS_ACQUEREURS = ['#e6194b', '#4363d8', '#3cb44b', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#9a6324']
 
 export function creerBien(): Bien {
-  return { parcelles: [], acquereurs: [], scenario: { objectifs: {}, lignes: [], attributions: [] } }
+  return {
+    parcelles: [],
+    prix: { total: null, parHectareDefaut: null, parHectare: {} },
+    acquereurs: [],
+    scenario: { objectifs: {}, lignes: [], attributions: [] },
+  }
+}
+
+export function fixerPrix(bien: Bien, prix: Prix): void {
+  bien.prix = prix
 }
 
 export function ajouterAcquereur(bien: Bien, nom: string): string {

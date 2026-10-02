@@ -4,6 +4,7 @@ import Carte from './components/Carte.vue'
 import PanneauBien from './components/PanneauBien.vue'
 import PanneauFichier from './components/PanneauFichier.vue'
 import PanneauAcquereurs from './components/PanneauAcquereurs.vue'
+import PanneauPrix from './components/PanneauPrix.vue'
 import { parcelleEn, type Commune } from './cadastre'
 import { ajouterParcelle, bilanBien, creerBien, retirerParcelle, type Bien } from './moteur/bien'
 import { bilanScenario } from './moteur/decoupage'
@@ -46,6 +47,7 @@ async function clic(lon: number, lat: number, idParcelle: string | null) {
   <div class="app">
     <aside>
       <PanneauBien :bilan="bilan" :chargement="chargement" @commune="centrer" @retirer="(id) => retirerParcelle(bien, id)" />
+      <PanneauPrix :bien="bien" :ecart-avant-recalage="scenario.ecartAvantRecalage" />
       <PanneauAcquereurs :bien="bien" :bilan="scenario" />
       <PanneauFichier :bien="bien" @importe="remplacer" />
     </aside>
@@ -61,7 +63,7 @@ async function clic(lon: number, lat: number, idParcelle: string | null) {
   height: 100%;
 }
 aside {
-  width: 360px;
+  width: 440px;
   overflow-y: auto;
   padding: 8px 12px;
   box-sizing: border-box;

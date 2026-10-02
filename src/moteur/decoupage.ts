@@ -1,6 +1,7 @@
 import type { MultiPolygon, Position } from 'geojson'
 import { difference, intersection, union, type Geom } from 'polyclip-ts'
-import { tenementsDuBien, type Bien, type LigneCoupe, type Parcelle } from './bien'
+import { tenementsDuBien, type Bien, type LigneCoupe, type Objectif, type Parcelle } from './bien'
+import { prixEffectifs, type PrixEffectifs } from './prix'
 import { aire, boite, pointVersL93, pointVersWgs84, polygonesVersWgs84, versL93, type PolygonesL93 } from './geo'
 
 export interface BilanLot {
@@ -10,21 +11,25 @@ export interface BilanLot {
   geometrie: MultiPolygon
   surfaceMesuree: number
   surfaceCadastrale: number
+  // Coût en €, ou null si aucun prix n'est saisi
+  cout: number | null
 }
 
 export interface BilanAcquereur {
   id: string
   surfaceMesuree: number
   surfaceCadastrale: number
-  // Objectif en m², ou null s'il n'est pas fixé
-  objectif: number | null
-  // Surface cadastrale - Objectif
+  cout: number | null
+  objectif: Objectif | null
+  // Écart à l'Objectif dans son unité : Surface cadastrale - Objectif (en ha), ou Coût - Objectif (en €)
   ecart: number | null
 }
 
 export interface BilanScenario {
   lots: BilanLot[]
   acquereurs: BilanAcquereur[]
+  ecartAvantRecalage: number | null
+  avertissements: string[]
 }
 
 const TOLERANCE_BISSECTION = 0.01 // m²
@@ -35,6 +40,8 @@ interface Morceau {
   geometrie: PolygonesL93
   // Contenance par m² mesuré de la Parcelle d'origine
   densite: number
+  // Prix effectif en € par m² de Contenance de la Parcelle d'origine
+  prix: number
 }
 
 function enGeom(polygones: PolygonesL93): Geom {
@@ -65,7 +72,7 @@ function coteGauche(points: Position[], portee: number): PolygonesL93 {
   return [[anneau]]
 }
 
-function morceaux(parcelles: Parcelle[], lignes: LigneCoupe[]): Morceau[] {
+function morceaux(parcelles: Parcelle[], lignes: LigneCoupe[], prix: PrixEffectifs): Morceau[] {
   const geometries = parcelles.map((p) => versL93(p.geometrie))
   const [x0, y0, x1, y1] = boite(geometries.flat())
   const portee = 10 * Math.hypot(x1 - x0, y1 - y0)
@@ -75,6 +82,7 @@ function morceaux(parcelles: Parcelle[], lignes: LigneCoupe[]): Morceau[] {
     signature: '',
     geometrie: geometries[i],
     densite: p.contenance / aire(geometries[i]),
+    prix: prix.parM2.get(p.id) ?? 0,
   }))
   for (const cote of cotes) {
     resultat = resultat.flatMap((m) =>
@@ -90,11 +98,14 @@ function morceaux(parcelles: Parcelle[], lignes: LigneCoupe[]): Morceau[] {
 
 export function bilanScenario(bien: Bien): BilanScenario {
   const { lignes, attributions, objectifs } = bien.scenario
+  const prix = prixEffectifs(bien)
+  const avecPrix = prix.parM2.size > 0
   const lots: BilanLot[] = tenementsDuBien(bien).flatMap(({ cle, parcelles }) => {
     const parSignature = new Map<string, Morceau[]>()
     for (const m of morceaux(
       parcelles,
       lignes.filter((l) => l.tenement === cle),
+      prix,
     )) {
       parSignature.set(m.signature, [...(parSignature.get(m.signature) ?? []), m])
     }
@@ -106,27 +117,79 @@ export function bilanScenario(bien: Bien): BilanScenario {
       geometrie: polygonesVersWgs84(union(...(ms.map((m) => enGeom(m.geometrie)) as [Geom, ...Geom[]]))),
       surfaceMesuree: ms.reduce((t, m) => t + aire(m.geometrie), 0),
       surfaceCadastrale: ms.reduce((t, m) => t + aire(m.geometrie) * m.densite, 0),
+      cout: avecPrix ? ms.reduce((t, m) => t + aire(m.geometrie) * m.densite * m.prix, 0) : null,
     }))
   })
 
   const acquereurs = bien.acquereurs.map(({ id }) => {
     const siens = lots.filter((l) => l.acquereur === id)
     const surfaceCadastrale = siens.reduce((t, l) => t + l.surfaceCadastrale, 0)
-    const objectif = objectifs[id] ? objectifs[id].valeur * 10000 : null
-    return {
-      id,
-      surfaceMesuree: siens.reduce((t, l) => t + l.surfaceMesuree, 0),
-      surfaceCadastrale,
-      objectif,
-      ecart: objectif === null ? null : surfaceCadastrale - objectif,
+    const cout = avecPrix ? siens.reduce((t, l) => t + l.cout!, 0) : null
+    const objectif = objectifs[id] ?? null
+    let ecart: number | null = null
+    if (objectif?.unite === 'ha') {
+      ecart = surfaceCadastrale - objectif.valeur * 10000
+    } else if (objectif?.unite === 'eur' && cout !== null) {
+      ecart = cout - objectif.valeur
     }
+
+    return { id, surfaceMesuree: siens.reduce((t, l) => t + l.surfaceMesuree, 0), surfaceCadastrale, cout, objectif, ecart }
   })
 
-  return { lots, acquereurs }
+  const avertissements = [...parts(bien, prix).avertissements]
+  if (prix.sansPrix.length > 0) {
+    avertissements.push(`Parcelles sans prix à l'hectare (Coût nul) : ${prix.sansPrix.join(', ')}`)
+  }
+
+  return { lots, acquereurs, ecartAvantRecalage: prix.ecartAvantRecalage, avertissements }
 }
 
-// Surface cadastrale de la partie des Parcelles située à l'ouest de l'abscisse x (Lambert 93)
-function surfaceCadastraleAvant(parcelles: { geometrie: PolygonesL93; densite: number }[], x: number, boiteY: [number, number]): number {
+interface Part {
+  id: string
+  unite: Objectif['unite']
+  // Fraction du Bien revenant à l'Acquéreur, après prorata
+  part: number
+}
+
+// Part du Bien visée par chaque Acquéreur : Objectif / Contenance du Bien (ha) ou / prix du Bien (€),
+// ramenée au prorata quand la somme ne fait pas 100 %
+function parts(bien: Bien, prix: PrixEffectifs): { parts: Part[]; avertissements: string[] } {
+  const contenance = bien.parcelles.reduce((t, p) => t + p.contenance, 0)
+  const avertissements: string[] = []
+  const brutes: Part[] = []
+  for (const a of bien.acquereurs) {
+    const objectif = bien.scenario.objectifs[a.id]
+    if (!objectif || objectif.valeur <= 0) {
+      continue
+    }
+
+    if (objectif.unite === 'eur' && !prix.prixBien) {
+      avertissements.push(`L'Objectif en euros de ${a.nom} est ignoré : aucun prix n'est saisi`)
+      continue
+    }
+
+    const reference = objectif.unite === 'ha' ? contenance / 10000 : prix.prixBien!
+    brutes.push({ id: a.id, unite: objectif.unite, part: objectif.valeur / reference })
+  }
+
+  const somme = brutes.reduce((t, p) => t + p.part, 0)
+  if (brutes.length > 0 && Math.abs(somme - 1) > 1e-6) {
+    avertissements.push(
+      `Les Objectifs représentent ${(somme * 100).toFixed(1).replace('.', ',')} % du Bien : parts ajustées au prorata`,
+    )
+  }
+
+  return { parts: brutes.map((p) => ({ ...p, part: p.part / somme })), avertissements }
+}
+
+interface ParcelleL93 {
+  geometrie: PolygonesL93
+  densite: number
+  prix: number
+}
+
+// Mesure (Surface cadastrale, ou Coût) de la partie des Parcelles située à l'ouest de l'abscisse x (Lambert 93)
+function mesureAvant(parcelles: ParcelleL93[], unite: Objectif['unite'], x: number, boiteY: [number, number]): number {
   const demiPlan: PolygonesL93 = [
     [
       [
@@ -138,15 +201,18 @@ function surfaceCadastraleAvant(parcelles: { geometrie: PolygonesL93; densite: n
       ],
     ],
   ]
-  return parcelles.reduce((t, p) => t + aire(intersection(enGeom(p.geometrie), enGeom(demiPlan))) * p.densite, 0)
+  return parcelles.reduce((t, p) => {
+    const surface = aire(intersection(enGeom(p.geometrie), enGeom(demiPlan))) * p.densite
+    return t + (unite === 'ha' ? surface : surface * p.prix)
+  }, 0)
 }
 
 // Découpe chaque Tènement en bandes parallèles (lignes nord-sud, de l'ouest vers l'est), une par Acquéreur
-// ayant un Objectif, dans l'ordre des Acquéreurs ; chaque bande reçoit la part du Tènement correspondant à
-// la part de son Objectif dans la somme des Objectifs.
+// ayant un Objectif, dans l'ordre des Acquéreurs. Chaque bande reçoit sa part du Tènement, mesurée en
+// Surface cadastrale (Objectif en ha) ou en Coût (Objectif en €) ; la dernière prend le reste.
 export function lancerDecoupage(bien: Bien): void {
-  const participants = bien.acquereurs.filter((a) => (bien.scenario.objectifs[a.id]?.valeur ?? 0) > 0)
-  const total = participants.reduce((t, a) => t + bien.scenario.objectifs[a.id].valeur, 0)
+  const prix = prixEffectifs(bien)
+  const participants = parts(bien, prix).parts
   bien.scenario.lignes = []
   bien.scenario.attributions = []
   if (participants.length === 0) {
@@ -156,29 +222,32 @@ export function lancerDecoupage(bien: Bien): void {
   for (const { cle, parcelles } of tenementsDuBien(bien)) {
     const geometries = parcelles.map((p) => {
       const geometrie = versL93(p.geometrie)
-      return { geometrie, densite: p.contenance / aire(geometrie) }
+      return { geometrie, densite: p.contenance / aire(geometrie), prix: prix.parM2.get(p.id) ?? 0 }
     })
     const [x0, y0, x1, y1] = boite(geometries.map((g) => g.geometrie).flat())
-    const contenance = parcelles.reduce((t, p) => t + p.contenance, 0)
     const nbLignes = participants.length - 1
 
-    let cumul = 0
+    let precedente = x0
     for (let k = 0; k < nbLignes; k++) {
-      cumul += (bien.scenario.objectifs[participants[k].id].valeur / total) * contenance
-      let bas = x0
+      const { unite, part } = participants[k]
+      const mesure = (x: number) => mesureAvant(geometries, unite, x, [y0, y1])
+      const dejaPris = mesure(precedente)
+      const cible = dejaPris + part * mesure(x1)
+      let bas = precedente
       let haut = x1
       while (haut - bas > 1e-6) {
         const milieu = (bas + haut) / 2
-        const s = surfaceCadastraleAvant(geometries, milieu, [y0, y1])
-        if (Math.abs(s - cumul) < TOLERANCE_BISSECTION) {
+        const s = mesure(milieu)
+        if (Math.abs(s - cible) < TOLERANCE_BISSECTION) {
           bas = haut = milieu
-        } else if (s < cumul) {
+        } else if (s < cible) {
           bas = milieu
         } else {
           haut = milieu
         }
       }
 
+      precedente = bas
       // Ligne parcourue du sud au nord : sa gauche est l'ouest, côté des bandes précédentes
       bien.scenario.lignes.push({
         tenement: cle,
