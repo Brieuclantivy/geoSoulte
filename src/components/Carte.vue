@@ -86,15 +86,32 @@ watch(
   { immediate: true },
 )
 
-// Lots du Découpage, colorés par Acquéreur
+// Hachures grises des Lots sans Acquéreur
+function hachures(): CanvasPattern {
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = 8
+  const contexte = canvas.getContext('2d')!
+  contexte.strokeStyle = '#666'
+  contexte.lineWidth = 2
+  contexte.beginPath()
+  contexte.moveTo(0, 8)
+  contexte.lineTo(8, 0)
+  contexte.stroke()
+  return contexte.createPattern(canvas, 'repeat')!
+}
+const nonAttribue = new Style({ stroke: new Stroke({ color: '#666', width: 2 }), fill: new Fill({ color: hachures() }) })
+
+// Lots du Découpage, colorés par Acquéreur ; hachurés en gris s'ils n'ont pas d'Acquéreur
 const sourceLots = new VectorSource()
 const coucheLots = new VectorLayer({
   source: sourceLots,
   style: (feature) =>
-    new Style({
-      stroke: new Stroke({ color: 'white', width: 2 }),
-      fill: new Fill({ color: feature.get('couleur') + '99' }),
-    }),
+    feature.get('couleur')
+      ? new Style({
+          stroke: new Stroke({ color: 'white', width: 2 }),
+          fill: new Fill({ color: feature.get('couleur') + '99' }),
+        })
+      : nonAttribue,
 })
 watch(
   () => props.scenario,
@@ -102,7 +119,8 @@ watch(
     sourceLots.clear()
     for (const lot of scenario.lots) {
       const couleur = props.bien.acquereurs.find((a) => a.id === lot.acquereur)?.couleur
-      if (!couleur) {
+      // Avant tout Découpage, les Lots ne sont pas affichés : un clic sur le Bien retire la Parcelle
+      if (!couleur && !scenarioCourant(props.bien).attributions.length) {
         continue
       }
 

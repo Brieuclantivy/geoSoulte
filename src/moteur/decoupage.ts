@@ -152,6 +152,11 @@ export function bilanScenario(bien: Bien): BilanScenario {
   })
 
   const avertissements = [...parts(bien, prix).avertissements]
+  // Avant tout Découpage, aucun Lot n'est attribué : rien à signaler
+  if (attributions.length > 0 && lots.some((l) => l.acquereur === null)) {
+    avertissements.push('Surface non attribuée : relancez le Découpage')
+  }
+
   if (prix.sansPrix.length > 0) {
     avertissements.push(`Parcelles sans prix à l'hectare (Coût nul) : ${prix.sansPrix.join(', ')}`)
   }

@@ -241,11 +241,29 @@ export function ajouterParcelle(bien: Bien, parcelle: Parcelle): void {
     return
   }
 
-  bien.parcelles.push(parcelle)
+  changerParcelles(bien, [...bien.parcelles, parcelle])
 }
 
 export function retirerParcelle(bien: Bien, id: string): void {
-  bien.parcelles = bien.parcelles.filter((p) => p.id !== id)
+  changerParcelles(bien, bien.parcelles.filter((p) => p.id !== id))
+}
+
+// Remplace les Parcelles du Bien. Dans tous les Scénarios, le Découpage (lignes, attributions, verrouillages)
+// des Tènements dont la composition change est effacé ; celui des Tènements intacts est conservé.
+function changerParcelles(bien: Bien, parcelles: Parcelle[]): void {
+  const composition = (t: { cle: string; parcelles: Parcelle[] }) => t.parcelles.map((p) => p.id).sort().join()
+  const avant = new Map(tenementsDuBien(bien).map((t) => [t.cle, composition(t)]))
+  bien.parcelles = parcelles
+  const intacts = new Set(tenementsDuBien(bien).filter((t) => avant.get(t.cle) === composition(t)).map((t) => t.cle))
+  for (const scenario of bien.scenarios) {
+    scenario.lignes = scenario.lignes.filter((l) => intacts.has(l.tenement))
+    scenario.attributions = scenario.attributions.filter((a) => intacts.has(a.tenement))
+    for (const tenement of Object.keys(scenario.verrouillages)) {
+      if (!intacts.has(tenement)) {
+        delete scenario.verrouillages[tenement]
+      }
+    }
+  }
 }
 
 // Les Tènements du Bien ; la clé d'un Tènement est le plus petit identifiant de ses Parcelles
