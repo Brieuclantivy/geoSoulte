@@ -361,3 +361,34 @@ export function lancerDecoupage(bien: Bien): void {
     proprietaires.forEach((acquereur, j) => attribuer(t.cle, 'D'.repeat(j) + 'G'.repeat(nbLignes - j), acquereur))
   }
 }
+
+// Signatures des Lots non vides d'un Tènement (les éclats de moins d'1 dm² dus aux arrondis sont ignorés)
+function signaturesDesLots(parcelles: Parcelle[], lignes: LigneCoupe[]): Set<string> {
+  const sansPrix: PrixEffectifs = { parM2: new Map(), prixBien: null, ecartAvantRecalage: null, sansPrix: [] }
+  return new Set(
+    morceaux(parcelles, lignes, sansPrix)
+      .filter((m) => aire(m.geometrie) >= 0.01)
+      .map((m) => m.signature),
+  )
+}
+
+// Remplace les points (WGS84) de la ligne de coupe d'indice donné. La modification est refusée (false) si
+// elle vide ou crée un Lot dans le Tènement : chaque Lot garde ainsi son Acquéreur et tout reste attribué.
+export function modifierLigne(bien: Bien, index: number, points: Position[]): boolean {
+  const ligne = bien.scenario.lignes[index]
+  const tenement = tenementsDuBien(bien).find((t) => t.cle === ligne?.tenement)
+  if (!tenement || points.length < 2) {
+    return false
+  }
+
+  const modifiees = bien.scenario.lignes.map((l, i) => (i === index ? { ...l, points } : l))
+  const duTenement = (lignes: LigneCoupe[]) => lignes.filter((l) => l.tenement === ligne.tenement)
+  const avant = signaturesDesLots(tenement.parcelles, duTenement(bien.scenario.lignes))
+  const apres = signaturesDesLots(tenement.parcelles, duTenement(modifiees))
+  if (avant.size !== apres.size || [...avant].some((s) => !apres.has(s))) {
+    return false
+  }
+
+  bien.scenario.lignes = modifiees
+  return true
+}

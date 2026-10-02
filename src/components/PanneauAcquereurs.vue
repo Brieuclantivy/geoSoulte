@@ -159,6 +159,10 @@ const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
         </tr>
       </tbody>
     </table>
+    <p v-if="bien.scenario.lignes.length" class="aide">
+      Ajustez les lignes de coupe sur la carte : glissez un sommet, tirez le milieu d'un segment pour ajouter un
+      sommet, Alt+clic pour en supprimer un.
+    </p>
     <ul v-if="bilan.avertissements.length" class="avertissements">
       <li v-for="(a, i) in bilan.avertissements" :key="i">{{ a }}</li>
     </ul>
@@ -207,6 +211,10 @@ td input {
 .reglage input {
   width: 80px;
   text-align: right;
+}
+.aide {
+  color: #666;
+  font-size: 13px;
 }
 .avertissements {
   color: #a15c00;

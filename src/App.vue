@@ -7,13 +7,33 @@ import PanneauAcquereurs from './components/PanneauAcquereurs.vue'
 import PanneauPrix from './components/PanneauPrix.vue'
 import { parcelleEn, type Commune } from './cadastre'
 import { ajouterParcelle, bilanBien, creerBien, retirerParcelle, type Bien } from './moteur/bien'
-import { bilanScenario } from './moteur/decoupage'
+import { bilanScenario, modifierLigne } from './moteur/decoupage'
 import { chargerSauvegarde, sauvegarder } from './persistance'
 
 const bien = reactive(chargerSauvegarde() ?? creerBien())
 watch(bien, () => sauvegarder(bien), { deep: true })
 const bilan = computed(() => bilanBien(bien))
-const scenario = computed(() => bilanScenario(bien))
+// Aperçu d'une ligne de coupe en cours de déplacement (non encore appliqué au Bien)
+const apercu = ref<{ index: number; points: number[][] } | null>(null)
+const scenario = computed(() => {
+  if (apercu.value) {
+    const copie = { ...bien, scenario: { ...bien.scenario } }
+    if (modifierLigne(copie, apercu.value.index, apercu.value.points)) {
+      return bilanScenario(copie)
+    }
+  }
+
+  return bilanScenario(bien)
+})
+
+function ligne(index: number, points: number[][], final: boolean) {
+  if (final) {
+    apercu.value = null
+    modifierLigne(bien, index, points)
+  } else {
+    apercu.value = { index, points }
+  }
+}
 const carte = ref<InstanceType<typeof Carte>>()
 const chargement = ref(false)
 
@@ -52,7 +72,7 @@ async function clic(lon: number, lat: number, idParcelle: string | null) {
       <PanneauFichier :bien="bien" @importe="remplacer" />
     </aside>
     <main>
-      <Carte ref="carte" :bien="bien" :bilan="bilan" :scenario="scenario" @clic="clic" />
+      <Carte ref="carte" :bien="bien" :bilan="bilan" :scenario="scenario" @clic="clic" @ligne="ligne" />
     </main>
   </div>
 </template>

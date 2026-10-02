@@ -7,7 +7,10 @@ import VectorLayer from 'ol/layer/Vector'
 import VectorSource from 'ol/source/Vector'
 import XYZ from 'ol/source/XYZ'
 import GeoJSON from 'ol/format/GeoJSON'
-import { Fill, Stroke, Style } from 'ol/style'
+import Feature from 'ol/Feature'
+import LineString from 'ol/geom/LineString'
+import Modify from 'ol/interaction/Modify'
+import { Circle, Fill, Stroke, Style } from 'ol/style'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { fixerOrientation, type Bien, type BilanBien } from '../moteur/bien'
 import Boussole from './Boussole.vue'
@@ -17,6 +20,8 @@ const props = defineProps<{ bien: Bien; bilan: BilanBien; scenario: BilanScenari
 const emit = defineEmits<{
   // idParcelle : la Parcelle du Bien cliquée, ou null si le clic est hors du Bien
   clic: [lon: number, lat: number, idParcelle: string | null]
+  // Ligne de coupe en cours de modification (final = false pendant le geste, true à la fin)
+  ligne: [index: number, points: number[][], final: boolean]
 }>()
 
 // Fonds WMTS de la Géoplateforme IGN, interrogés en XYZ (matrices PM_*, EPSG:3857)
@@ -109,16 +114,70 @@ watch(
   { immediate: true },
 )
 
+// Lignes de coupe, modifiables : déplacer un sommet, en ajouter un en tirant un segment, Alt+clic pour en supprimer un
+const sourceLignes = new VectorSource<Feature<LineString>>()
+const coucheLignes = new VectorLayer({
+  source: sourceLignes,
+  style: new Style({ stroke: new Stroke({ color: '#111', width: 2, lineDash: [6, 4] }) }),
+})
+function dessinerLignes() {
+  sourceLignes.clear()
+  props.bien.scenario.lignes.forEach((l, index) => {
+    const feature = new Feature(new LineString(l.points.map((p) => fromLonLat(p))))
+    feature.set('index', index)
+    sourceLignes.addFeature(feature)
+  })
+}
+watch(() => props.bien.scenario.lignes, dessinerLignes, { immediate: true })
+
+const modification = new Modify({
+  source: sourceLignes,
+  style: new Style({ image: new Circle({ radius: 6, fill: new Fill({ color: '#111' }), stroke: new Stroke({ color: 'white', width: 2 }) }) }),
+})
+const pointsDe = (f: Feature<LineString>) => f.getGeometry()!.getCoordinates().map((c) => toLonLat(c))
+let enCours: Feature<LineString> | null = null
+let image = 0
+modification.on('modifystart', (e) => {
+  enCours = e.features.item(0) as Feature<LineString>
+})
+sourceLignes.on('changefeature', (e) => {
+  const feature = e.feature as Feature<LineString>
+  if (feature !== enCours || image) {
+    return
+  }
+
+  // Au plus un aperçu par image affichée
+  image = requestAnimationFrame(() => {
+    image = 0
+    if (enCours) {
+      emit('ligne', enCours.get('index'), pointsDe(enCours), false)
+    }
+  })
+})
+modification.on('modifyend', (e) => {
+  const feature = e.features.item(0) as Feature<LineString>
+  enCours = null
+  emit('ligne', feature.get('index'), pointsDe(feature), true)
+  // Redessine depuis l'état : une modification refusée revient en place
+  dessinerLignes()
+})
+
 const cible = ref<HTMLDivElement>()
 let carte: OlMap
 
 onMounted(() => {
   carte = new OlMap({
     target: cible.value,
-    layers: [couches.orthophoto, couches.rpg, couches.cadastre, coucheBien, coucheLots],
+    layers: [couches.orthophoto, couches.rpg, couches.cadastre, coucheBien, coucheLots, coucheLignes],
     view: new View({ center: fromLonLat([2.5, 46.6]), zoom: 6 }),
   })
+  carte.addInteraction(modification)
   carte.on('singleclick', (e) => {
+    // Un clic sur une ligne de coupe (ex. Alt+clic sur un sommet) ne touche pas aux Parcelles
+    if (carte.hasFeatureAtPixel(e.pixel, { layerFilter: (c) => c === coucheLignes, hitTolerance: 6 })) {
+      return
+    }
+
     const [lon, lat] = toLonLat(e.coordinate)
     const parcelle = sourceBien.getFeaturesAtCoordinate(e.coordinate)[0]
     emit('clic', lon, lat, parcelle ? String(parcelle.getId()) : null)
