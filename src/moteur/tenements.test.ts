@@ -73,6 +73,25 @@ describe('Bien en plusieurs Tènements', () => {
     expect(paul.surfaceCadastrale).toBeCloseTo(10.06 * HA, -1)
   })
 
+  test('un Tènement entier va à l’Acquéreur le plus loin de son Objectif en proportion, pas en valeur absolue', () => {
+    const bien = creerBien()
+    ajouterParcelle(bien, rectangle('A', 0, 0, 300, 1000))
+    ajouterParcelle(bien, rectangle('B', 1000, 0, 100, 200))
+    ajouterParcelle(bien, rectangle('C', 2000, 0, 100, 600))
+    ajouterParcelle(bien, rectangle('D', 3000, 0, 100, 500))
+    ajouterParcelle(bien, rectangle('E', 4000, 0, 100, 500))
+    const ids = groupe(bien, { Paul: 40, Marie: 8 })
+    // Paul reçoit A (30 ha), Marie B (2 ha) : il reste 10 ha sur 40 à Paul (25 %), 6 ha sur 8 à Marie (75 %)
+    verrouiller(bien, 'A', ids.Paul)
+    verrouiller(bien, 'B', ids.Marie)
+
+    lancerDecoupage(bien)
+
+    // C (6 ha), le plus grand Tènement libre, va à Marie, bien que Paul ait plus d'hectares à recevoir
+    expect(lotsDe(bien, ids.Marie).map((l) => l.tenement).sort()).toEqual(['B', 'C'])
+    expect(scenarioCourant(bien).lignes).toEqual([])
+  })
+
   test('les Tènements qui ne tiennent dans aucun Objectif sont découpés et toute la surface est attribuée', () => {
     const bien = deuxTenements(10)
     const ids = groupe(bien, { Paul: 25, Marie: 25 })

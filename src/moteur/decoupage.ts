@@ -239,7 +239,7 @@ const RELIQUAT = 1
 
 // Découpage automatique, en trois temps :
 // 1. les Tènements verrouillés vont en entier à leur Acquéreur ;
-// 2. du plus grand au plus petit, un Tènement va en entier à l'Acquéreur le plus loin de son Objectif,
+// 2. du plus grand au plus petit, un Tènement va en entier à l'Acquéreur le plus loin de son Objectif en proportion,
 //    s'il y tient à la tolérance près ;
 // 3. les Tènements restants sont découpés en bandes parallèles, avançant selon l'orientation du Scénario
 //    (par défaut le grand côté du Tènement), que les Acquéreurs remplissent dans leur ordre, chacun jusqu'à son Objectif, mesuré en Surface cadastrale
