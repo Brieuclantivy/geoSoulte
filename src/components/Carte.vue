@@ -3,8 +3,19 @@ import { onMounted, reactive, ref, watch } from 'vue'
 import OlMap from 'ol/Map'
 import View from 'ol/View'
 import TileLayer from 'ol/layer/Tile'
+import VectorLayer from 'ol/layer/Vector'
+import VectorSource from 'ol/source/Vector'
 import XYZ from 'ol/source/XYZ'
-import { fromLonLat } from 'ol/proj'
+import GeoJSON from 'ol/format/GeoJSON'
+import { Fill, Stroke, Style } from 'ol/style'
+import { fromLonLat, toLonLat } from 'ol/proj'
+import type { Bien, BilanBien } from '../moteur/bien'
+
+const props = defineProps<{ bien: Bien; bilan: BilanBien }>()
+const emit = defineEmits<{
+  // idParcelle : la Parcelle du Bien cliquée, ou null si le clic est hors du Bien
+  clic: [lon: number, lat: number, idParcelle: string | null]
+}>()
 
 // Fonds WMTS de la Géoplateforme IGN, interrogés en XYZ (matrices PM_*, EPSG:3857)
 function coucheIgn(layer: string, style: string, format: string, matrixSet: string, maxZoom: number) {
@@ -38,15 +49,56 @@ watch(
   { immediate: true },
 )
 
+// Parcelles du Bien, colorées par Tènement
+const COULEURS_TENEMENTS = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45']
+const sourceBien = new VectorSource()
+const coucheBien = new VectorLayer({
+  source: sourceBien,
+  style: (feature) => {
+    const couleur = COULEURS_TENEMENTS[feature.get('tenement') % COULEURS_TENEMENTS.length]
+    return new Style({ stroke: new Stroke({ color: couleur, width: 3 }), fill: new Fill({ color: couleur + '33' }) })
+  },
+})
+const geojson = new GeoJSON({ featureProjection: 'EPSG:3857' })
+watch(
+  () => props.bilan,
+  (bilan) => {
+    sourceBien.clear()
+    props.bien.parcelles.forEach((p, i) => {
+      const feature = geojson.readFeature({ type: 'Feature', geometry: p.geometrie, properties: {} })
+      if (Array.isArray(feature)) {
+        return
+      }
+
+      feature.setId(p.id)
+      feature.set('tenement', bilan.parcelles[i].tenement)
+      sourceBien.addFeature(feature)
+    })
+  },
+  { immediate: true },
+)
+
 const cible = ref<HTMLDivElement>()
+let carte: OlMap
 
 onMounted(() => {
-  new OlMap({
+  carte = new OlMap({
     target: cible.value,
-    layers: [couches.orthophoto, couches.rpg, couches.cadastre],
+    layers: [couches.orthophoto, couches.rpg, couches.cadastre, coucheBien],
     view: new View({ center: fromLonLat([2.5, 46.6]), zoom: 6 }),
   })
+  carte.on('singleclick', (e) => {
+    const [lon, lat] = toLonLat(e.coordinate)
+    const parcelle = sourceBien.getFeaturesAtCoordinate(e.coordinate)[0]
+    emit('clic', lon, lat, parcelle ? String(parcelle.getId()) : null)
+  })
 })
+
+function centrerSur(lon: number, lat: number) {
+  carte.getView().animate({ center: fromLonLat([lon, lat]), zoom: 15 })
+}
+
+defineExpose({ centrerSur })
 </script>
 
 <template>

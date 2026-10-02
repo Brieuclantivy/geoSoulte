@@ -12,10 +12,13 @@
   },
   "dependencies": {
     "ol": "^10.10.0",
+    "proj4": "^2.22.0",
     "vue": "^3.5.43"
   },
   "devDependencies": {
+    "@types/geojson": "^7946.0.16",
     "@types/node": "^26.6.4",
+    "@types/proj4": "^2.5.6",
     "@vitejs/plugin-vue": "^6.0.9",
     "@vue/tsconfig": "^0.9.1",
     "typescript": "^6.0.3",
