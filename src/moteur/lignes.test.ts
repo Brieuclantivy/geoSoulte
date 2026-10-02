@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { Position } from 'geojson'
-import { ajouterAcquereur, ajouterParcelle, creerBien, fixerObjectif, type Bien } from './bien'
+import { ajouterAcquereur, ajouterParcelle, creerBien, fixerObjectif, type Bien, scenarioCourant } from './bien'
 import { ajouterLigne, bilanScenario, lancerDecoupage, modifierLigne, reattribuer, supprimerLigne } from './decoupage'
 import { rectangle } from './fixtures'
 
@@ -53,10 +53,10 @@ describe('Ajouter une ligne de coupe', () => {
 
   test('une ligne qui ne traverse pas le Bien est refusée', () => {
     const { bien } = bienDecoupe()
-    const lignes = structuredClone(bien.scenario.lignes)
+    const lignes = structuredClone(scenarioCourant(bien).lignes)
 
     expect(ajouterLigne(bien, [pt(2000, -100), pt(2000, 600)])).toBe(false)
-    expect(bien.scenario.lignes).toEqual(lignes)
+    expect(scenarioCourant(bien).lignes).toEqual(lignes)
   })
 })
 
@@ -100,16 +100,16 @@ describe('Supprimer une ligne de coupe', () => {
 describe('Ajustements manuels', () => {
   test('le Scénario sait s’il a été ajusté à la main depuis le dernier Découpage automatique', () => {
     const { bien, ids } = bienDecoupe()
-    expect(bien.scenario.ajuste).toBe(false)
+    expect(scenarioCourant(bien).ajuste).toBe(false)
 
     modifierLigne(bien, 0, [pt(250, -1), pt(250, 501)])
-    expect(bien.scenario.ajuste).toBe(true)
+    expect(scenarioCourant(bien).ajuste).toBe(true)
 
     lancerDecoupage(bien)
-    expect(bien.scenario.ajuste).toBe(false)
+    expect(scenarioCourant(bien).ajuste).toBe(false)
 
     const lot = bilanScenario(bien).lots[0]
     reattribuer(bien, lot.tenement, lot.signature, ids.Marie)
-    expect(bien.scenario.ajuste).toBe(true)
+    expect(scenarioCourant(bien).ajuste).toBe(true)
   })
 })

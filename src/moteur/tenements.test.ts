@@ -8,6 +8,7 @@ import {
   supprimerAcquereur,
   verrouiller,
   type Bien,
+  scenarioCourant,
 } from './bien'
 import { bilanScenario, lancerDecoupage } from './decoupage'
 import { rectangle } from './fixtures'
@@ -40,7 +41,7 @@ describe('Bien en plusieurs Tènements', () => {
 
     lancerDecoupage(bien)
 
-    expect(bien.scenario.lignes).toEqual([])
+    expect(scenarioCourant(bien).lignes).toEqual([])
     expect(lotsDe(bien, ids.Paul).map((l) => l.tenement)).toEqual(['A'])
     expect(lotsDe(bien, ids.Marie).map((l) => l.tenement)).toEqual(['B'])
   })
@@ -116,6 +117,6 @@ describe('Attributions verrouillées', () => {
 
     supprimerAcquereur(bien, ids.Paul)
 
-    expect(bien.scenario.verrouillages).toEqual({})
+    expect(scenarioCourant(bien).verrouillages).toEqual({})
   })
 })

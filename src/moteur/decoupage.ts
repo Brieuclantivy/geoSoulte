@@ -1,6 +1,6 @@
 import type { MultiPolygon, Position } from 'geojson'
 import { difference, intersection, union, type Geom } from 'polyclip-ts'
-import { acquereursOrdonnes, tenementsDuBien, type Bien, type LigneCoupe, type Objectif, type Parcelle } from './bien'
+import { acquereursOrdonnes, scenarioCourant, tenementsDuBien, type Bien, type LigneCoupe, type Objectif, type Parcelle } from './bien'
 import { prixEffectifs, type PrixEffectifs } from './prix'
 import {
   aire,
@@ -112,7 +112,7 @@ function morceaux(parcelles: Parcelle[], lignes: LigneCoupe[], prix: PrixEffecti
 }
 
 export function bilanScenario(bien: Bien): BilanScenario {
-  const { lignes, attributions, objectifs } = bien.scenario
+  const { lignes, attributions, objectifs } = scenarioCourant(bien)
   const prix = prixEffectifs(bien)
   const avecPrix = prix.parM2.size > 0
   const lots: BilanLot[] = tenementsDuBien(bien).flatMap(({ cle, parcelles }) => {
@@ -173,7 +173,7 @@ function parts(bien: Bien, prix: PrixEffectifs): { parts: Part[]; avertissements
   const avertissements: string[] = []
   const brutes: Part[] = []
   for (const a of acquereursOrdonnes(bien)) {
-    const objectif = bien.scenario.objectifs[a.id]
+    const objectif = scenarioCourant(bien).objectifs[a.id]
     if (!objectif || objectif.valeur <= 0) {
       continue
     }
@@ -242,10 +242,10 @@ const RELIQUAT = 1
 export function lancerDecoupage(bien: Bien): void {
   const prix = prixEffectifs(bien)
   const participants = parts(bien, prix).parts
-  const { verrouillages, tolerance, orientation } = bien.scenario
-  bien.scenario.lignes = []
-  bien.scenario.attributions = []
-  bien.scenario.ajuste = false
+  const { verrouillages, tolerance, orientation } = scenarioCourant(bien)
+  scenarioCourant(bien).lignes = []
+  scenarioCourant(bien).attributions = []
+  scenarioCourant(bien).ajuste = false
 
   const tenements = tenementsDuBien(bien).map(({ cle, parcelles }) => ({
     cle,
@@ -259,7 +259,7 @@ export function lancerDecoupage(bien: Bien): void {
   const cibles = new Map(participants.map((a) => [a.id, a.part * mesureTotale(tout, a.unite)]))
   const restants = new Map(cibles)
   const attribuer = (tenement: string, signature: string, acquereur: string) =>
-    bien.scenario.attributions.push({ tenement, signature, acquereur })
+    scenarioCourant(bien).attributions.push({ tenement, signature, acquereur })
   const prendre = (acquereur: string, quantite: number) => {
     if (restants.has(acquereur)) {
       restants.set(acquereur, restants.get(acquereur)! - quantite)
@@ -343,7 +343,7 @@ export function lancerDecoupage(bien: Bien): void {
       prendre(a.id, restants.get(a.id)!)
       precedente = bas
       // Ligne orientée de sorte que sa gauche soit du côté des bandes précédentes
-      bien.scenario.lignes.push({
+      scenarioCourant(bien).lignes.push({
         tenement: t.cle,
         points: [
           [bas, y0 - 1],
@@ -356,13 +356,13 @@ export function lancerDecoupage(bien: Bien): void {
     // la dernière bande est prolongée jusqu'au bout, ou le Tènement va au dernier Acquéreur
     if (precedente < x1) {
       if (proprietaires.length > 0) {
-        bien.scenario.lignes.pop()
+        scenarioCourant(bien).lignes.pop()
       } else {
         proprietaires.push(participants[participants.length - 1].id)
       }
     }
 
-    const nbLignes = bien.scenario.lignes.filter((l) => l.tenement === t.cle).length
+    const nbLignes = scenarioCourant(bien).lignes.filter((l) => l.tenement === t.cle).length
     proprietaires.forEach((acquereur, j) => attribuer(t.cle, 'D'.repeat(j) + 'G'.repeat(nbLignes - j), acquereur))
   }
 }
@@ -379,22 +379,22 @@ function signaturesDesLots(parcelles: Parcelle[], lignes: LigneCoupe[]): Set<str
 // Remplace les points (WGS84) de la ligne de coupe d'indice donné. La modification est refusée (false) si
 // elle vide ou crée un Lot dans le Tènement : chaque Lot garde ainsi son Acquéreur et tout reste attribué.
 export function modifierLigne(bien: Bien, index: number, points: Position[]): boolean {
-  const ligne = bien.scenario.lignes[index]
+  const ligne = scenarioCourant(bien).lignes[index]
   const tenement = tenementsDuBien(bien).find((t) => t.cle === ligne?.tenement)
   if (!tenement || points.length < 2) {
     return false
   }
 
-  const modifiees = bien.scenario.lignes.map((l, i) => (i === index ? { ...l, points } : l))
+  const modifiees = scenarioCourant(bien).lignes.map((l, i) => (i === index ? { ...l, points } : l))
   const duTenement = (lignes: LigneCoupe[]) => lignes.filter((l) => l.tenement === ligne.tenement)
-  const avant = signaturesDesLots(tenement.parcelles, duTenement(bien.scenario.lignes))
+  const avant = signaturesDesLots(tenement.parcelles, duTenement(scenarioCourant(bien).lignes))
   const apres = signaturesDesLots(tenement.parcelles, duTenement(modifiees))
   if (avant.size !== apres.size || [...avant].some((s) => !apres.has(s))) {
     return false
   }
 
-  bien.scenario.lignes = modifiees
-  bien.scenario.ajuste = true
+  scenarioCourant(bien).lignes = modifiees
+  scenarioCourant(bien).ajuste = true
   return true
 }
 
@@ -409,15 +409,15 @@ export function ajouterLigne(bien: Bien, points: Position[]): boolean {
     }
 
     const ligne = { tenement: cle, points }
-    const lignes = bien.scenario.lignes.filter((l) => l.tenement === cle)
+    const lignes = scenarioCourant(bien).lignes.filter((l) => l.tenement === cle)
     const avant = signaturesDesLots(parcelles, lignes)
     if (signaturesDesLots(parcelles, [...lignes, ligne]).size === avant.size) {
       continue
     }
 
     acceptee = true
-    bien.scenario.lignes.push(ligne)
-    bien.scenario.attributions = bien.scenario.attributions.flatMap((a) =>
+    scenarioCourant(bien).lignes.push(ligne)
+    scenarioCourant(bien).attributions = scenarioCourant(bien).attributions.flatMap((a) =>
       a.tenement === cle
         ? [
             { ...a, signature: a.signature + 'G' },
@@ -428,7 +428,7 @@ export function ajouterLigne(bien: Bien, points: Position[]): boolean {
   }
 
   if (acceptee) {
-    bien.scenario.ajuste = true
+    scenarioCourant(bien).ajuste = true
   }
 
   return acceptee
@@ -436,13 +436,13 @@ export function ajouterLigne(bien: Bien, points: Position[]): boolean {
 
 // Supprime une ligne de coupe ; chaque Lot fusionné va à l'Acquéreur de sa plus grande partie
 export function supprimerLigne(bien: Bien, index: number): void {
-  const ligne = bien.scenario.lignes[index]
+  const ligne = scenarioCourant(bien).lignes[index]
   const tenement = tenementsDuBien(bien).find((t) => t.cle === ligne?.tenement)
   if (!tenement) {
     return
   }
 
-  const lignes = bien.scenario.lignes.filter((l) => l.tenement === ligne.tenement)
+  const lignes = scenarioCourant(bien).lignes.filter((l) => l.tenement === ligne.tenement)
   const rang = lignes.indexOf(ligne)
   const surfaces = new Map<string, number>()
   for (const m of morceaux(tenement.parcelles, lignes, SANS_PRIX)) {
@@ -450,7 +450,7 @@ export function supprimerLigne(bien: Bien, index: number): void {
   }
 
   const fusion = new Map<string, { acquereur: string; surface: number }>()
-  for (const a of bien.scenario.attributions.filter((a) => a.tenement === ligne.tenement)) {
+  for (const a of scenarioCourant(bien).attributions.filter((a) => a.tenement === ligne.tenement)) {
     const signature = a.signature.slice(0, rang) + a.signature.slice(rang + 1)
     const surface = surfaces.get(a.signature) ?? 0
     if (surface > (fusion.get(signature)?.surface ?? -1)) {
@@ -458,18 +458,18 @@ export function supprimerLigne(bien: Bien, index: number): void {
     }
   }
 
-  bien.scenario.lignes = bien.scenario.lignes.filter((_, i) => i !== index)
-  bien.scenario.attributions = [
-    ...bien.scenario.attributions.filter((a) => a.tenement !== ligne.tenement),
+  scenarioCourant(bien).lignes = scenarioCourant(bien).lignes.filter((_, i) => i !== index)
+  scenarioCourant(bien).attributions = [
+    ...scenarioCourant(bien).attributions.filter((a) => a.tenement !== ligne.tenement),
     ...[...fusion].map(([signature, { acquereur }]) => ({ tenement: ligne.tenement, signature, acquereur })),
   ]
-  bien.scenario.ajuste = true
+  scenarioCourant(bien).ajuste = true
 }
 
 export function reattribuer(bien: Bien, tenement: string, signature: string, acquereur: string): void {
-  bien.scenario.attributions = [
-    ...bien.scenario.attributions.filter((a) => a.tenement !== tenement || a.signature !== signature),
+  scenarioCourant(bien).attributions = [
+    ...scenarioCourant(bien).attributions.filter((a) => a.tenement !== tenement || a.signature !== signature),
     { tenement, signature, acquereur },
   ]
-  bien.scenario.ajuste = true
+  scenarioCourant(bien).ajuste = true
 }

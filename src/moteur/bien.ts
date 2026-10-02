@@ -45,6 +45,8 @@ export interface Attribution {
 }
 
 export interface Scenario {
+  id: string
+  nom: string
   objectifs: Record<string, Objectif>
   // Écart relatif à l'Objectif en deçà duquel un Tènement entier est attribué
   tolerance: number
@@ -64,7 +66,9 @@ export interface Bien {
   parcelles: Parcelle[]
   prix: Prix
   acquereurs: Acquereur[]
-  scenario: Scenario
+  scenarios: Scenario[]
+  // Identifiant du Scénario courant
+  courant: string
 }
 
 export interface BilanParcelle {
@@ -93,21 +97,73 @@ export interface BilanBien {
 
 const COULEURS_ACQUEREURS = ['#e6194b', '#4363d8', '#3cb44b', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#9a6324']
 
+export function scenarioVide(id: string, nom: string): Scenario {
+  return {
+    id,
+    nom,
+    objectifs: {},
+    tolerance: 0.05,
+    verrouillages: {},
+    orientation: null,
+    ordre: [],
+    lignes: [],
+    attributions: [],
+    ajuste: false,
+  }
+}
+
 export function creerBien(): Bien {
   return {
     parcelles: [],
     prix: { total: null, parHectareDefaut: null, parHectare: {} },
     acquereurs: [],
-    scenario: {
-      objectifs: {},
-      tolerance: 0.05,
-      verrouillages: {},
-      orientation: null,
-      ordre: [],
-      lignes: [],
-      attributions: [],
-      ajuste: false,
-    },
+    scenarios: [scenarioVide('s1', 'Scénario 1')],
+    courant: 's1',
+  }
+}
+
+export function scenarioCourant(bien: Bien): Scenario {
+  return bien.scenarios.find((s) => s.id === bien.courant) ?? bien.scenarios[0]
+}
+
+function nouvelIdScenario(bien: Bien): string {
+  return `s${Math.max(0, ...bien.scenarios.map((s) => Number(s.id.slice(1)))) + 1}`
+}
+
+export function creerScenario(bien: Bien, nom: string): string {
+  const id = nouvelIdScenario(bien)
+  bien.scenarios.push(scenarioVide(id, nom))
+  return id
+}
+
+// Duplique le Scénario courant (copie JSON : le Bien peut être un proxy réactif, que structuredClone refuse)
+export function dupliquerScenario(bien: Bien): string {
+  const original = scenarioCourant(bien)
+  const id = nouvelIdScenario(bien)
+  bien.scenarios.push({ ...JSON.parse(JSON.stringify(original)), id, nom: `${original.nom} (copie)` })
+  return id
+}
+
+export function choisirScenario(bien: Bien, id: string): void {
+  bien.courant = id
+}
+
+export function renommerScenario(bien: Bien, id: string, nom: string): void {
+  const scenario = bien.scenarios.find((s) => s.id === id)
+  if (scenario) {
+    scenario.nom = nom
+  }
+}
+
+// Le dernier Scénario ne peut pas être supprimé
+export function supprimerScenario(bien: Bien, id: string): void {
+  if (bien.scenarios.length <= 1) {
+    return
+  }
+
+  bien.scenarios = bien.scenarios.filter((s) => s.id !== id)
+  if (bien.courant === id) {
+    bien.courant = bien.scenarios[0].id
   }
 }
 
@@ -129,53 +185,55 @@ export function renommerAcquereur(bien: Bien, id: string, nom: string): void {
   }
 }
 
-// Le Découpage n'a plus de sens sans cet Acquéreur : il est effacé et devra être relancé
+// Les Découpages n'ont plus de sens sans cet Acquéreur : ils sont effacés dans tous les Scénarios
 export function supprimerAcquereur(bien: Bien, id: string): void {
   bien.acquereurs = bien.acquereurs.filter((a) => a.id !== id)
-  delete bien.scenario.objectifs[id]
-  bien.scenario.ordre = bien.scenario.ordre.filter((a) => a !== id)
-  for (const [tenement, acquereur] of Object.entries(bien.scenario.verrouillages)) {
-    if (acquereur === id) {
-      delete bien.scenario.verrouillages[tenement]
+  for (const scenario of bien.scenarios) {
+    delete scenario.objectifs[id]
+    scenario.ordre = scenario.ordre.filter((a) => a !== id)
+    for (const [tenement, acquereur] of Object.entries(scenario.verrouillages)) {
+      if (acquereur === id) {
+        delete scenario.verrouillages[tenement]
+      }
     }
-  }
 
-  bien.scenario.lignes = []
-  bien.scenario.attributions = []
+    scenario.lignes = []
+    scenario.attributions = []
+  }
 }
 
 export function fixerOrientation(bien: Bien, degres: number | null): void {
-  bien.scenario.orientation = degres
+  scenarioCourant(bien).orientation = degres
 }
 
 export function fixerOrdre(bien: Bien, ordre: string[]): void {
-  bien.scenario.ordre = ordre
+  scenarioCourant(bien).ordre = ordre
 }
 
 // Acquéreurs dans l'ordre du Scénario
 export function acquereursOrdonnes(bien: Bien): Acquereur[] {
   const rang = (a: Acquereur) => {
-    const i = bien.scenario.ordre.indexOf(a.id)
+    const i = scenarioCourant(bien).ordre.indexOf(a.id)
     return i === -1 ? Infinity : i
   }
   return [...bien.acquereurs].sort((a, b) => rang(a) - rang(b))
 }
 
 export function fixerTolerance(bien: Bien, tolerance: number): void {
-  bien.scenario.tolerance = tolerance
+  scenarioCourant(bien).tolerance = tolerance
 }
 
 // Verrouille le Tènement (par sa clé) sur un Acquéreur, ou le déverrouille (null)
 export function verrouiller(bien: Bien, tenement: string, acquereur: string | null): void {
   if (acquereur === null) {
-    delete bien.scenario.verrouillages[tenement]
+    delete scenarioCourant(bien).verrouillages[tenement]
   } else {
-    bien.scenario.verrouillages[tenement] = acquereur
+    scenarioCourant(bien).verrouillages[tenement] = acquereur
   }
 }
 
 export function fixerObjectif(bien: Bien, acquereur: string, objectif: Objectif): void {
-  bien.scenario.objectifs[acquereur] = objectif
+  scenarioCourant(bien).objectifs[acquereur] = objectif
 }
 
 export function ajouterParcelle(bien: Bien, parcelle: Parcelle): void {

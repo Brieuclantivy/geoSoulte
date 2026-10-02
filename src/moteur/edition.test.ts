@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { Position } from 'geojson'
-import { ajouterAcquereur, ajouterParcelle, creerBien, fixerObjectif, type Bien } from './bien'
+import { ajouterAcquereur, ajouterParcelle, creerBien, fixerObjectif, type Bien, scenarioCourant } from './bien'
 import { bilanScenario, lancerDecoupage, modifierLigne } from './decoupage'
 import { enLocal, rectangle } from './fixtures'
 import { exporter, importer } from './export'
@@ -40,7 +40,7 @@ describe('Ajuster une ligne de coupe', () => {
     const avant = bilanScenario(bien).lots.map((l) => [l.signature, l.acquereur])
 
     // La première ligne (entre Paul et Marie, à x = 200 m) passe à x = 250 m
-    const accepte = modifierLigne(bien, 0, decaler(bien.scenario.lignes[0].points, 50))
+    const accepte = modifierLigne(bien, 0, decaler(scenarioCourant(bien).lignes[0].points, 50))
 
     expect(accepte).toBe(true)
     expect(surface(bien, ids.Paul)).toBeCloseTo(12.5 * HA, -1)
@@ -52,14 +52,14 @@ describe('Ajuster une ligne de coupe', () => {
     const { bien, ids } = bienDecoupe()
 
     // Sommet nord de la première ligne poussé de 100 m vers l'est : Paul gagne un triangle de 100 × 500 / 2 m²
-    modifierLigne(bien, 0, decaler(bien.scenario.lignes[0].points, 100, [1]))
+    modifierLigne(bien, 0, decaler(scenarioCourant(bien).lignes[0].points, 100, [1]))
 
     expect(surface(bien, ids.Paul)).toBeCloseTo(10 * HA + 25000, -1)
   })
 
   test('ajouter un sommet au milieu de la ligne permet de la plier', () => {
     const { bien, ids } = bienDecoupe()
-    const [debut, fin] = bien.scenario.lignes[0].points
+    const [debut, fin] = scenarioCourant(bien).lignes[0].points
     const [, yDebut] = enLocal(debut)
     const [, yFin] = enLocal(fin)
     const milieu = rectangle('tmp', 300, (yDebut + yFin) / 2, 1, 1).geometrie.coordinates[0][0] as Position
@@ -74,12 +74,12 @@ describe('Ajuster une ligne de coupe', () => {
 
   test('une ligne sortie du Tènement est refusée et rien ne change', () => {
     const { bien, ids } = bienDecoupe()
-    const lignes = structuredClone(bien.scenario.lignes)
+    const lignes = structuredClone(scenarioCourant(bien).lignes)
 
-    const accepte = modifierLigne(bien, 0, decaler(bien.scenario.lignes[0].points, -500))
+    const accepte = modifierLigne(bien, 0, decaler(scenarioCourant(bien).lignes[0].points, -500))
 
     expect(accepte).toBe(false)
-    expect(bien.scenario.lignes).toEqual(lignes)
+    expect(scenarioCourant(bien).lignes).toEqual(lignes)
     expect(surface(bien, ids.Paul)).toBeCloseTo(10 * HA, -1)
   })
 
@@ -87,14 +87,14 @@ describe('Ajuster une ligne de coupe', () => {
     const { bien } = bienDecoupe()
 
     // La première ligne (x = 200) inclinée jusqu'au-delà de la seconde (x = 500) côté nord
-    const accepte = modifierLigne(bien, 0, decaler(bien.scenario.lignes[0].points, 400, [1]))
+    const accepte = modifierLigne(bien, 0, decaler(scenarioCourant(bien).lignes[0].points, 400, [1]))
 
     expect(accepte).toBe(false)
   })
 
   test('les lignes modifiées survivent à l’export/import', () => {
     const { bien } = bienDecoupe()
-    modifierLigne(bien, 0, decaler(bien.scenario.lignes[0].points, 50))
+    modifierLigne(bien, 0, decaler(scenarioCourant(bien).lignes[0].points, 50))
 
     expect(bilanScenario(importer(exporter(bien)))).toEqual(bilanScenario(bien))
   })

@@ -13,7 +13,7 @@ import Modify from 'ol/interaction/Modify'
 import Draw from 'ol/interaction/Draw'
 import { Circle, Fill, Stroke, Style } from 'ol/style'
 import { fromLonLat, toLonLat } from 'ol/proj'
-import { fixerOrientation, type Bien, type BilanBien } from '../moteur/bien'
+import { fixerOrientation, scenarioCourant, type Bien, type BilanBien } from '../moteur/bien'
 import Boussole from './Boussole.vue'
 import { ajouterLigne, reattribuer, supprimerLigne, type BilanScenario } from '../moteur/decoupage'
 
@@ -127,13 +127,13 @@ const coucheLignes = new VectorLayer({
 })
 function dessinerLignes() {
   sourceLignes.clear()
-  props.bien.scenario.lignes.forEach((l, index) => {
+  scenarioCourant(props.bien).lignes.forEach((l, index) => {
     const feature = new Feature(new LineString(l.points.map((p) => fromLonLat(p))))
     feature.set('index', index)
     sourceLignes.addFeature(feature)
   })
 }
-watch(() => props.bien.scenario.lignes, dessinerLignes, { immediate: true, deep: true })
+watch(() => scenarioCourant(props.bien).lignes, dessinerLignes, { immediate: true, deep: true })
 
 const modification = new Modify({
   source: sourceLignes,
@@ -268,7 +268,7 @@ defineExpose({ centrerSur })
   <div class="carte">
     <div ref="cible" class="ol"></div>
     <div class="outils">
-      <button v-if="bien.scenario.lignes.length || bien.scenario.attributions.length" type="button" @click="basculerTrace">
+      <button v-if="scenarioCourant(bien).lignes.length || scenarioCourant(bien).attributions.length" type="button" @click="basculerTrace">
         {{ enTrace ? 'Annuler le tracé' : '✏ Tracer une ligne de coupe' }}
       </button>
       <span v-if="enTrace" class="aide">Clic pour chaque sommet, double-clic pour finir</span>
@@ -282,7 +282,7 @@ defineExpose({ centrerSur })
       </template>
       <button v-else type="button" @click="supprimerLaLigne">Supprimer cette ligne de coupe</button>
     </div>
-    <Boussole :orientation="bien.scenario.orientation" @change="(o) => fixerOrientation(bien, o)" />
+    <Boussole :orientation="scenarioCourant(bien).orientation" @change="(o) => fixerOrientation(bien, o)" />
     <fieldset class="fonds">
       <legend>Fonds</legend>
       <label><input v-model="visibles.orthophoto" type="checkbox" /> Orthophoto</label>

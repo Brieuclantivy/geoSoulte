@@ -7,6 +7,7 @@ import {
   fixerOrdre,
   fixerTolerance,
   renommerAcquereur,
+  scenarioCourant,
   supprimerAcquereur,
   verrouiller,
   type Bien,
@@ -29,17 +30,17 @@ function ajouter() {
 function objectif(id: string, e: Event) {
   const valeur = nombreSaisi(e)
   if (valeur !== null && valeur >= 0) {
-    fixerObjectif(props.bien, id, { unite: props.bien.scenario.objectifs[id]?.unite ?? 'ha', valeur })
+    fixerObjectif(props.bien, id, { unite: scenarioCourant(props.bien).objectifs[id]?.unite ?? 'ha', valeur })
   }
 }
 
 function unite(id: string, e: Event) {
   const unite = (e.target as HTMLSelectElement).value as Objectif['unite']
-  fixerObjectif(props.bien, id, { unite, valeur: props.bien.scenario.objectifs[id]?.valeur ?? 0 })
+  fixerObjectif(props.bien, id, { unite, valeur: scenarioCourant(props.bien).objectifs[id]?.valeur ?? 0 })
 }
 
 function lancer() {
-  if (!props.bien.scenario.ajuste || confirm('Relancer le Découpage automatique efface vos ajustements manuels des lignes et des attributions. Continuer ?')) {
+  if (!scenarioCourant(props.bien).ajuste || confirm('Relancer le Découpage automatique efface vos ajustements manuels des lignes et des attributions. Continuer ?')) {
     lancerDecoupage(props.bien)
   }
 }
@@ -105,12 +106,12 @@ const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
               min="0"
               step="any"
               class="nombre"
-              :value="bien.scenario.objectifs[a.id]?.valeur"
+              :value="scenarioCourant(bien).objectifs[a.id]?.valeur"
               @change="objectif(a.id, $event)"
             />
           </td>
           <td>
-            <select :value="bien.scenario.objectifs[a.id]?.unite ?? 'ha'" @change="unite(a.id, $event)">
+            <select :value="scenarioCourant(bien).objectifs[a.id]?.unite ?? 'ha'" @change="unite(a.id, $event)">
               <option value="ha">ha</option>
               <option value="eur">€</option>
             </select>
@@ -128,12 +129,12 @@ const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
       <summary>Réglages du Découpage</summary>
       <label class="reglage">
         Tolérance pour attribuer un Tènement entier (%)
-        <input type="number" min="0" step="any" :value="bien.scenario.tolerance * 100" @change="tolerance" />
+        <input type="number" min="0" step="any" :value="scenarioCourant(bien).tolerance * 100" @change="tolerance" />
       </label>
       <label v-for="(t, i) in tenements" :key="t.cle" class="reglage">
         Tènement {{ i + 1 }} ({{ hectares(t.contenance) }})
         <select
-          :value="bien.scenario.verrouillages[t.cle] ?? ''"
+          :value="scenarioCourant(bien).verrouillages[t.cle] ?? ''"
           @change="verrouiller(bien, t.cle, ($event.target as HTMLSelectElement).value || null)"
         >
           <option value="">Automatique</option>
@@ -165,7 +166,7 @@ const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
         </tr>
       </tbody>
     </table>
-    <p v-if="bien.scenario.lignes.length" class="aide">
+    <p v-if="scenarioCourant(bien).lignes.length" class="aide">
       Ajustez les lignes de coupe sur la carte : glissez un sommet, tirez le milieu d'un segment pour ajouter un
       sommet, Alt+clic pour en supprimer un. Cliquez sur un Lot pour le réattribuer, sur une ligne pour la supprimer.
     </p>

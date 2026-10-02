@@ -5,6 +5,7 @@ import PanneauBien from './components/PanneauBien.vue'
 import PanneauFichier from './components/PanneauFichier.vue'
 import PanneauAcquereurs from './components/PanneauAcquereurs.vue'
 import PanneauPrix from './components/PanneauPrix.vue'
+import PanneauScenarios from './components/PanneauScenarios.vue'
 import { parcelleEn, type Commune } from './cadastre'
 import { ajouterParcelle, bilanBien, creerBien, retirerParcelle, type Bien } from './moteur/bien'
 import { bilanScenario, modifierLigne } from './moteur/decoupage'
@@ -17,7 +18,7 @@ const bilan = computed(() => bilanBien(bien))
 const apercu = ref<{ index: number; points: number[][] } | null>(null)
 const scenario = computed(() => {
   if (apercu.value) {
-    const copie = { ...bien, scenario: { ...bien.scenario } }
+    const copie = { ...bien, scenarios: bien.scenarios.map((s) => (s.id === bien.courant ? { ...s } : s)) }
     if (modifierLigne(copie, apercu.value.index, apercu.value.points)) {
       return bilanScenario(copie)
     }
@@ -68,6 +69,7 @@ async function clic(lon: number, lat: number, idParcelle: string | null) {
     <aside>
       <PanneauBien :bilan="bilan" :chargement="chargement" @commune="centrer" @retirer="(id) => retirerParcelle(bien, id)" />
       <PanneauPrix :bien="bien" :ecart-avant-recalage="scenario.ecartAvantRecalage" />
+      <PanneauScenarios :bien="bien" />
       <PanneauAcquereurs :bien="bien" :bilan="scenario" :tenements="bilan.tenements" />
       <PanneauFichier :bien="bien" @importe="remplacer" />
     </aside>

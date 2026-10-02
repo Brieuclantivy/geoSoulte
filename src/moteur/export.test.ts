@@ -22,7 +22,7 @@ describe('Export et import JSON', () => {
   })
 
   test('l’export porte un numéro de version de format', () => {
-    expect(JSON.parse(exporter(creerBien())).version).toBe(1)
+    expect(JSON.parse(exporter(creerBien())).version).toBe(2)
   })
 
   test('un export sans Acquéreurs ni Scénario (format initial) s’importe avec des valeurs par défaut', () => {

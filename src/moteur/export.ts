@@ -1,7 +1,8 @@
-import { creerBien, type Bien } from './bien'
+import { creerBien, scenarioVide, type Bien, type Scenario } from './bien'
 
-// Version du format d'export ; à incrémenter (avec une migration) quand la structure du Bien change
-const VERSION = 1
+// Version du format d'export ; à incrémenter (avec une migration) quand la structure du Bien change.
+// Version 1 : un seul Scénario (champ `scenario`) ; version 2 : plusieurs Scénarios.
+const VERSION = 2
 
 export function exporter(bien: Bien): string {
   return JSON.stringify({ version: VERSION, bien })
@@ -9,11 +10,20 @@ export function exporter(bien: Bien): string {
 
 export function importer(json: string): Bien {
   const donnees = JSON.parse(json)
-  if (donnees?.version !== VERSION || !Array.isArray(donnees.bien?.parcelles)) {
+  if (![1, VERSION].includes(donnees?.version) || !Array.isArray(donnees.bien?.parcelles)) {
     throw new Error("Ce fichier n'est pas un export geoSoulte valide")
   }
 
+  const { scenario, ...bien } = donnees.bien
+  if (donnees.version === 1) {
+    bien.scenarios = [{ ...scenario, id: 's1', nom: 'Scénario 1' }]
+    bien.courant = 's1'
+  }
+
   // Les champs absents des exports antérieurs prennent leur valeur par défaut
-  const defaut = creerBien()
-  return { ...defaut, ...donnees.bien, scenario: { ...defaut.scenario, ...donnees.bien.scenario } }
+  return {
+    ...creerBien(),
+    ...bien,
+    scenarios: bien.scenarios.map((s: Scenario) => ({ ...scenarioVide(s.id, s.nom), ...s })),
+  }
 }
