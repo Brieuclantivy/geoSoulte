@@ -36,7 +36,8 @@ function deplacement(e: PointerEvent) {
       @pointermove="deplacement"
       @pointerup="glisse = false"
     >
-      <svg viewBox="-50 -50 100 100" :style="{ transform: `rotate(${-(props.orientation ?? 0)}deg)` }">
+      <!-- En mode Auto, chaque Tènement suit son grand côté : aucune direction unique à montrer -->
+      <svg v-if="props.orientation !== null" viewBox="-50 -50 100 100" :style="{ transform: `rotate(${-props.orientation}deg)` }">
         <line x1="-34" y1="0" x2="30" y2="0" />
         <polygon points="40,0 24,-10 24,10" />
       </svg>
