@@ -1,5 +1,5 @@
 export function hectares(m2: number): string {
-  return (m2 / 10000).toLocaleString('fr-FR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + ' ha'
+  return (m2 / 10000).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ha'
 }
 
 export function euros(montant: number): string {
