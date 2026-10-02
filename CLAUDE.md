@@ -76,18 +76,6 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-## 6. Project-Specific: Numeric Parsing
-
-**Never use `parseFloat` (or `Number()`/unary `+` for parsing untrusted/CSV string data). Always use `decimal()` from `packages/server/src/api/modelisation/stats-lib.ts`.**
-
-- `decimal(v)` returns a `Decimal` (decimal.js) — call `.toNumber()`, `.mul()`, `.div()`, etc. as needed.
-- `decimal()` throws on invalid input (unlike `parseFloat`, which silently parses a leading numeric prefix). Wrap in `try {} catch { return <default> }` when the input may be empty/garbage (see `phpFloat`, `formatPctNum`, `formatPctFraction` in `packages/server/src/resultats/utils/MEFShared.ts` for the established pattern).
-- Applies to all numeric parsing of CSV/string data across the codebase, not just new code — if you touch a line with `parseFloat`, convert it.
-
----
-
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
-
 ## Agent skills
 
 ### Issue tracker
