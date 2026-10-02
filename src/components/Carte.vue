@@ -228,6 +228,7 @@ onMounted(() => {
   })
   carte.addInteraction(modification)
   window.addEventListener('keydown', touche)
+  impression.addEventListener('change', changementImpression)
   carte.on('movestart', () => (menu.value = null))
   carte.on('singleclick', (e) => {
     menu.value = null
@@ -255,7 +256,35 @@ onMounted(() => {
   })
 })
 
-onUnmounted(() => window.removeEventListener('keydown', touche))
+// Impression : la carte est cadrée sur le Bien et redimensionnée au format de la page. On suit le média
+// « print » plutôt que beforeprint, qui survient avant la mise en page d'impression.
+const impression = window.matchMedia('print')
+function changementImpression(e: MediaQueryListEvent) {
+  if (e.matches) {
+    avantImpression()
+  } else {
+    apresImpression()
+  }
+}
+
+function avantImpression() {
+  carte.updateSize()
+  const etendue = sourceBien.getExtent()
+  if (etendue && sourceBien.getFeatures().length) {
+    carte.getView().fit(etendue, { padding: [20, 20, 20, 20] })
+  }
+
+  carte.renderSync()
+}
+
+function apresImpression() {
+  carte.updateSize()
+}
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', touche)
+  impression.removeEventListener('change', changementImpression)
+})
 
 function centrerSur(lon: number, lat: number) {
   carte.getView().animate({ center: fromLonLat([lon, lat]), zoom: 15 })
@@ -350,5 +379,15 @@ defineExpose({ centrerSur })
   flex-direction: column;
   gap: 2px;
   font-size: 14px;
+}
+/* En dernier : l'emporte sur les règles d'affichage ci-dessus */
+@media print {
+  .outils,
+  .menu,
+  .fonds,
+  .boussole,
+  .carte :deep(.ol-control) {
+    display: none;
+  }
 }
 </style>

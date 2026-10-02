@@ -6,6 +6,7 @@ import PanneauFichier from './components/PanneauFichier.vue'
 import PanneauAcquereurs from './components/PanneauAcquereurs.vue'
 import PanneauPrix from './components/PanneauPrix.vue'
 import PanneauScenarios from './components/PanneauScenarios.vue'
+import Recapitulatif from './components/Recapitulatif.vue'
 import { parcelleEn, type Commune } from './cadastre'
 import { ajouterParcelle, bilanBien, creerBien, retirerParcelle, type Bien } from './moteur/bien'
 import { bilanScenario, modifierLigne } from './moteur/decoupage'
@@ -42,6 +43,10 @@ function centrer(commune: Commune) {
   carte.value?.centrerSur(...commune.centre)
 }
 
+function imprimer() {
+  window.print()
+}
+
 function remplacer(nouveau: Bien) {
   Object.assign(bien, nouveau)
 }
@@ -67,6 +72,11 @@ async function clic(lon: number, lat: number, idParcelle: string | null) {
 <template>
   <div class="app">
     <aside>
+      <header>
+        <strong>geoSoulte</strong>
+        <button type="button" @click="imprimer">Imprimer le récapitulatif</button>
+        <p class="indicatif">Simulation purement indicative : ni plan de géomètre, ni document officiel.</p>
+      </header>
       <PanneauBien :bilan="bilan" :chargement="chargement" @commune="centrer" @retirer="(id) => retirerParcelle(bien, id)" />
       <PanneauPrix :bien="bien" :ecart-avant-recalage="scenario.ecartAvantRecalage" />
       <PanneauScenarios :bien="bien" />
@@ -75,6 +85,7 @@ async function clic(lon: number, lat: number, idParcelle: string | null) {
     </aside>
     <main>
       <Carte ref="carte" :bien="bien" :bilan="bilan" :scenario="scenario" @clic="clic" @ligne="ligne" />
+      <Recapitulatif :bien="bien" :bilan="bilan" :scenario="scenario" />
     </main>
   </div>
 </template>
@@ -93,5 +104,49 @@ aside {
 }
 main {
   flex: 1;
+}
+header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 6px;
+}
+.indicatif {
+  margin: 0;
+  width: 100%;
+  font-size: 12px;
+  color: #a15c00;
+}
+
+/* Téléphone : la carte au-dessus, les panneaux en dessous */
+@media (max-width: 700px) {
+  .app {
+    flex-direction: column-reverse;
+    height: auto;
+  }
+  aside {
+    width: 100%;
+    border-right: none;
+  }
+  main {
+    height: 60vh;
+    flex: none;
+  }
+}
+
+@media print {
+  aside {
+    display: none;
+  }
+  .app {
+    display: block;
+    height: auto;
+  }
+  main {
+    height: 13cm;
+  }
 }
 </style>
