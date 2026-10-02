@@ -1,17 +1,24 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import Carte from './components/Carte.vue'
 import PanneauBien from './components/PanneauBien.vue'
+import PanneauFichier from './components/PanneauFichier.vue'
 import { parcelleEn, type Commune } from './cadastre'
-import { ajouterParcelle, bilanBien, creerBien, retirerParcelle } from './moteur/bien'
+import { ajouterParcelle, bilanBien, creerBien, retirerParcelle, type Bien } from './moteur/bien'
+import { chargerSauvegarde, sauvegarder } from './persistance'
 
-const bien = reactive(creerBien())
+const bien = reactive(chargerSauvegarde() ?? creerBien())
+watch(bien, () => sauvegarder(bien), { deep: true })
 const bilan = computed(() => bilanBien(bien))
 const carte = ref<InstanceType<typeof Carte>>()
 const chargement = ref(false)
 
 function centrer(commune: Commune) {
   carte.value?.centrerSur(...commune.centre)
+}
+
+function remplacer(nouveau: Bien) {
+  Object.assign(bien, nouveau)
 }
 
 async function clic(lon: number, lat: number, idParcelle: string | null) {
@@ -36,6 +43,7 @@ async function clic(lon: number, lat: number, idParcelle: string | null) {
   <div class="app">
     <aside>
       <PanneauBien :bilan="bilan" :chargement="chargement" @commune="centrer" @retirer="(id) => retirerParcelle(bien, id)" />
+      <PanneauFichier :bien="bien" @importe="remplacer" />
     </aside>
     <main>
       <Carte ref="carte" :bien="bien" :bilan="bilan" @clic="clic" />
