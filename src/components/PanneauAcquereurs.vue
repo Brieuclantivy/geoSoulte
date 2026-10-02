@@ -1,10 +1,20 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ajouterAcquereur, fixerObjectif, renommerAcquereur, supprimerAcquereur, type Bien, type Objectif } from '../moteur/bien'
+import {
+  ajouterAcquereur,
+  fixerObjectif,
+  fixerTolerance,
+  renommerAcquereur,
+  supprimerAcquereur,
+  verrouiller,
+  type Bien,
+  type BilanTenement,
+  type Objectif,
+} from '../moteur/bien'
 import { lancerDecoupage, type BilanScenario } from '../moteur/decoupage'
 import { euros, hectares, nombreSaisi } from '../format'
 
-const props = defineProps<{ bien: Bien; bilan: BilanScenario }>()
+const props = defineProps<{ bien: Bien; bilan: BilanScenario; tenements: BilanTenement[] }>()
 const nouveau = ref('')
 
 function ajouter() {
@@ -24,6 +34,13 @@ function objectif(id: string, e: Event) {
 function unite(id: string, e: Event) {
   const unite = (e.target as HTMLSelectElement).value as Objectif['unite']
   fixerObjectif(props.bien, id, { unite, valeur: props.bien.scenario.objectifs[id]?.valeur ?? 0 })
+}
+
+function tolerance(e: Event) {
+  const valeur = nombreSaisi(e)
+  if (valeur !== null && valeur >= 0) {
+    fixerTolerance(props.bien, valeur / 100)
+  }
 }
 
 function enUnite(valeur: number, unite: Objectif['unite']): string {
@@ -75,6 +92,23 @@ const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
       <button>Ajouter</button>
     </form>
 
+    <details v-if="tenements.length">
+      <summary>Réglages du Découpage</summary>
+      <label class="reglage">
+        Tolérance pour attribuer un Tènement entier (%)
+        <input type="number" min="0" step="any" :value="bien.scenario.tolerance * 100" @change="tolerance" />
+      </label>
+      <label v-for="(t, i) in tenements" :key="t.cle" class="reglage">
+        Tènement {{ i + 1 }} ({{ hectares(t.contenance) }})
+        <select
+          :value="bien.scenario.verrouillages[t.cle] ?? ''"
+          @change="verrouiller(bien, t.cle, ($event.target as HTMLSelectElement).value || null)"
+        >
+          <option value="">Automatique</option>
+          <option v-for="a in bien.acquereurs" :key="a.id" :value="a.id">🔒 {{ a.nom }}</option>
+        </select>
+      </label>
+    </details>
     <p>
       <button type="button" :disabled="!bien.parcelles.length || !bien.acquereurs.length" @click="lancerDecoupage(bien)">
         Lancer le Découpage automatique
@@ -132,6 +166,17 @@ td input {
 }
 .bilan {
   margin-top: 8px;
+}
+.reglage {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+  margin: 4px 0;
+}
+.reglage input {
+  width: 80px;
+  text-align: right;
 }
 .avertissements {
   color: #a15c00;

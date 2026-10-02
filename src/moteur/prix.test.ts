@@ -111,4 +111,16 @@ describe('Objectifs en euros', () => {
     expect(bilan.acquereurs.find((a) => a.id === ids.Marie)!.surfaceCadastrale).toBe(0)
     expect(bilan.acquereurs.find((a) => a.id === ids.Paul)!.surfaceCadastrale).toBeCloseTo(20 * HA, -1)
   })
+
+  test('quand des Objectifs en euros laissent du terrain non attribué, la dernière bande le prend', () => {
+    const bien = bienAB()
+    fixerPrix(bien, { total: null, parHectareDefaut: 5000, parHectare: { A: 10000 } })
+    groupe(bien, { Paul: eur(100000), Marie: ha(5) })
+
+    lancerDecoupage(bien)
+    const bilan = bilanScenario(bien)
+
+    expect(bilan.lots.every((l) => l.acquereur !== null)).toBe(true)
+    expect(bilan.lots.reduce((t, l) => t + l.surfaceCadastrale, 0)).toBeCloseTo(20 * HA, -1)
+  })
 })

@@ -48,7 +48,7 @@ async function clic(lon: number, lat: number, idParcelle: string | null) {
     <aside>
       <PanneauBien :bilan="bilan" :chargement="chargement" @commune="centrer" @retirer="(id) => retirerParcelle(bien, id)" />
       <PanneauPrix :bien="bien" :ecart-avant-recalage="scenario.ecartAvantRecalage" />
-      <PanneauAcquereurs :bien="bien" :bilan="scenario" />
+      <PanneauAcquereurs :bien="bien" :bilan="scenario" :tenements="bilan.tenements" />
       <PanneauFichier :bien="bien" @importe="remplacer" />
     </aside>
     <main>

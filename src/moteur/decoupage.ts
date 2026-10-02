@@ -207,37 +207,108 @@ function mesureAvant(parcelles: ParcelleL93[], unite: Objectif['unite'], x: numb
   }, 0)
 }
 
-// Découpe chaque Tènement en bandes parallèles (lignes nord-sud, de l'ouest vers l'est), une par Acquéreur
-// ayant un Objectif, dans l'ordre des Acquéreurs. Chaque bande reçoit sa part du Tènement, mesurée en
-// Surface cadastrale (Objectif en ha) ou en Coût (Objectif en €) ; la dernière prend le reste.
+function mesureTotale(parcelles: ParcelleL93[], unite: Objectif['unite']): number {
+  return parcelles.reduce((t, p) => {
+    const surface = aire(p.geometrie) * p.densite
+    return t + (unite === 'ha' ? surface : surface * p.prix)
+  }, 0)
+}
+
+// En deçà de cette quantité (m² ou €), l'Objectif d'un Acquéreur est considéré comme atteint
+const RELIQUAT = 1
+
+// Découpage automatique, en trois temps :
+// 1. les Tènements verrouillés vont en entier à leur Acquéreur ;
+// 2. du plus grand au plus petit, un Tènement va en entier à l'Acquéreur le plus loin de son Objectif,
+//    s'il y tient à la tolérance près ;
+// 3. les Tènements restants sont découpés en bandes parallèles (lignes nord-sud, d'ouest en est) que les
+//    Acquéreurs remplissent dans leur ordre, chacun jusqu'à son Objectif, mesuré en Surface cadastrale
+//    (Objectif en ha) ou en Coût (Objectif en €).
 export function lancerDecoupage(bien: Bien): void {
   const prix = prixEffectifs(bien)
   const participants = parts(bien, prix).parts
+  const { verrouillages, tolerance } = bien.scenario
   bien.scenario.lignes = []
   bien.scenario.attributions = []
+
+  const tenements = tenementsDuBien(bien).map(({ cle, parcelles }) => ({
+    cle,
+    contenance: parcelles.reduce((t, p) => t + p.contenance, 0),
+    parcelles: parcelles.map((p) => {
+      const geometrie = versL93(p.geometrie)
+      return { geometrie, densite: p.contenance / aire(geometrie), prix: prix.parM2.get(p.id) ?? 0 }
+    }),
+  }))
+  const tout = tenements.flatMap((t) => t.parcelles)
+  const cibles = new Map(participants.map((a) => [a.id, a.part * mesureTotale(tout, a.unite)]))
+  const restants = new Map(cibles)
+  const attribuer = (tenement: string, signature: string, acquereur: string) =>
+    bien.scenario.attributions.push({ tenement, signature, acquereur })
+  const prendre = (acquereur: string, quantite: number) => {
+    if (restants.has(acquereur)) {
+      restants.set(acquereur, restants.get(acquereur)! - quantite)
+    }
+  }
+  const uniteDe = (acquereur: string) => participants.find((a) => a.id === acquereur)?.unite ?? 'ha'
+
+  // 1. Verrouillages
+  const libres = tenements.filter((t) => {
+    const acquereur = verrouillages[t.cle]
+    if (!acquereur || !bien.acquereurs.some((a) => a.id === acquereur)) {
+      return true
+    }
+
+    attribuer(t.cle, '', acquereur)
+    prendre(acquereur, mesureTotale(t.parcelles, uniteDe(acquereur)))
+    return false
+  })
   if (participants.length === 0) {
     return
   }
 
-  for (const { cle, parcelles } of tenementsDuBien(bien)) {
-    const geometries = parcelles.map((p) => {
-      const geometrie = versL93(p.geometrie)
-      return { geometrie, densite: p.contenance / aire(geometrie), prix: prix.parM2.get(p.id) ?? 0 }
-    })
-    const [x0, y0, x1, y1] = boite(geometries.map((g) => g.geometrie).flat())
-    const nbLignes = participants.length - 1
+  // 2. Tènements entiers
+  const aDecouper = [...libres]
+    .sort((a, b) => b.contenance - a.contenance)
+    .filter((t) => {
+      const [candidat] = [...participants].sort(
+        (a, b) => restants.get(b.id)! / cibles.get(b.id)! - restants.get(a.id)! / cibles.get(a.id)!,
+      )
+      const mesure = mesureTotale(t.parcelles, candidat.unite)
+      if (mesure > restants.get(candidat.id)! + tolerance * cibles.get(candidat.id)!) {
+        return true
+      }
 
+      attribuer(t.cle, '', candidat.id)
+      prendre(candidat.id, mesure)
+      return false
+    })
+
+  // 3. Bandes
+  for (const t of libres.filter((l) => aDecouper.includes(l))) {
+    const [x0, y0, x1, y1] = boite(t.parcelles.map((p) => p.geometrie).flat())
+    const mesure = (unite: Objectif['unite'], x: number) => mesureAvant(t.parcelles, unite, x, [y0, y1])
+    const proprietaires: string[] = []
     let precedente = x0
-    for (let k = 0; k < nbLignes; k++) {
-      const { unite, part } = participants[k]
-      const mesure = (x: number) => mesureAvant(geometries, unite, x, [y0, y1])
-      const dejaPris = mesure(precedente)
-      const cible = dejaPris + part * mesure(x1)
+    for (const a of participants) {
+      if (restants.get(a.id)! < RELIQUAT) {
+        continue
+      }
+
+      const dejaPris = mesure(a.unite, precedente)
+      const reste = mesureTotale(t.parcelles, a.unite) - dejaPris
+      proprietaires.push(a.id)
+      if (reste <= restants.get(a.id)! + RELIQUAT) {
+        prendre(a.id, reste)
+        precedente = x1
+        break
+      }
+
+      const cible = dejaPris + restants.get(a.id)!
       let bas = precedente
       let haut = x1
       while (haut - bas > 1e-6) {
         const milieu = (bas + haut) / 2
-        const s = mesure(milieu)
+        const s = mesure(a.unite, milieu)
         if (Math.abs(s - cible) < TOLERANCE_BISSECTION) {
           bas = haut = milieu
         } else if (s < cible) {
@@ -247,20 +318,26 @@ export function lancerDecoupage(bien: Bien): void {
         }
       }
 
+      prendre(a.id, restants.get(a.id)!)
       precedente = bas
       // Ligne parcourue du sud au nord : sa gauche est l'ouest, côté des bandes précédentes
       bien.scenario.lignes.push({
-        tenement: cle,
+        tenement: t.cle,
         points: [pointVersWgs84([bas, y0 - 1]), pointVersWgs84([bas, y1 + 1])],
       })
     }
 
-    participants.forEach((a, j) => {
-      bien.scenario.attributions.push({
-        tenement: cle,
-        signature: 'D'.repeat(j) + 'G'.repeat(nbLignes - j),
-        acquereur: a.id,
-      })
-    })
+    // Tènement non épuisé (arrondis, ou Objectifs en € sur des terres de prix inégaux) :
+    // la dernière bande est prolongée jusqu'au bout, ou le Tènement va au dernier Acquéreur
+    if (precedente < x1) {
+      if (proprietaires.length > 0) {
+        bien.scenario.lignes.pop()
+      } else {
+        proprietaires.push(participants[participants.length - 1].id)
+      }
+    }
+
+    const nbLignes = bien.scenario.lignes.filter((l) => l.tenement === t.cle).length
+    proprietaires.forEach((acquereur, j) => attribuer(t.cle, 'D'.repeat(j) + 'G'.repeat(nbLignes - j), acquereur))
   }
 }

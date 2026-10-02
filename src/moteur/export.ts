@@ -14,5 +14,6 @@ export function importer(json: string): Bien {
   }
 
   // Les champs absents des exports antérieurs prennent leur valeur par défaut
-  return { ...creerBien(), ...donnees.bien }
+  const defaut = creerBien()
+  return { ...defaut, ...donnees.bien, scenario: { ...defaut.scenario, ...donnees.bien.scenario } }
 }

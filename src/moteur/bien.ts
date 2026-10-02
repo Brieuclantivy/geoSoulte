@@ -46,6 +46,10 @@ export interface Attribution {
 
 export interface Scenario {
   objectifs: Record<string, Objectif>
+  // Écart relatif à l'Objectif en deçà duquel un Tènement entier est attribué
+  tolerance: number
+  // Attributions verrouillées : clé de Tènement → Acquéreur
+  verrouillages: Record<string, string>
   lignes: LigneCoupe[]
   attributions: Attribution[]
 }
@@ -66,6 +70,7 @@ export interface BilanParcelle {
 }
 
 export interface BilanTenement {
+  cle: string
   parcelles: string[]
   contenance: number
   surfaceMesuree: number
@@ -87,7 +92,7 @@ export function creerBien(): Bien {
     parcelles: [],
     prix: { total: null, parHectareDefaut: null, parHectare: {} },
     acquereurs: [],
-    scenario: { objectifs: {}, lignes: [], attributions: [] },
+    scenario: { objectifs: {}, tolerance: 0.05, verrouillages: {}, lignes: [], attributions: [] },
   }
 }
 
@@ -113,8 +118,27 @@ export function renommerAcquereur(bien: Bien, id: string, nom: string): void {
 export function supprimerAcquereur(bien: Bien, id: string): void {
   bien.acquereurs = bien.acquereurs.filter((a) => a.id !== id)
   delete bien.scenario.objectifs[id]
+  for (const [tenement, acquereur] of Object.entries(bien.scenario.verrouillages)) {
+    if (acquereur === id) {
+      delete bien.scenario.verrouillages[tenement]
+    }
+  }
+
   bien.scenario.lignes = []
   bien.scenario.attributions = []
+}
+
+export function fixerTolerance(bien: Bien, tolerance: number): void {
+  bien.scenario.tolerance = tolerance
+}
+
+// Verrouille le Tènement (par sa clé) sur un Acquéreur, ou le déverrouille (null)
+export function verrouiller(bien: Bien, tenement: string, acquereur: string | null): void {
+  if (acquereur === null) {
+    delete bien.scenario.verrouillages[tenement]
+  } else {
+    bien.scenario.verrouillages[tenement] = acquereur
+  }
 }
 
 export function fixerObjectif(bien: Bien, acquereur: string, objectif: Objectif): void {
@@ -181,7 +205,8 @@ export function bilanBien(bien: Bien): BilanBien {
   const nbTenements = Math.max(0, ...indices.map((i) => i + 1))
   const bilanTenements = Array.from({ length: nbTenements }, (_, t) => {
     const ps = parcelles.filter((p) => p.tenement === t)
-    return { parcelles: ps.map((p) => p.id), ...totaliser(ps) }
+    const ids = ps.map((p) => p.id)
+    return { cle: [...ids].sort()[0], parcelles: ids, ...totaliser(ps) }
   })
   const total = totaliser(parcelles)
   return { parcelles, tenements: bilanTenements, ...total, ecart: total.contenance - total.surfaceMesuree }
