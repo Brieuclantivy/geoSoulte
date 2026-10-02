@@ -29,8 +29,8 @@ describe('Ajouter une ligne de coupe', () => {
   test('une nouvelle ligne crée un Lot qui garde l’Acquéreur du Lot d’origine', () => {
     const { bien, ids } = bienDecoupe()
 
-    // Coupe est-ouest dans le Lot de Marie, à y = 250
-    const accepte = ajouterLigne(bien, [pt(150, 250), pt(1050, 250)])
+    // Coupe est-ouest de part en part, à y = 250
+    const accepte = ajouterLigne(bien, [pt(-50, 250), pt(1050, 250)])
 
     expect(accepte).toBe(true)
     const lots = bilanScenario(bien).lots
@@ -46,7 +46,7 @@ describe('Ajouter une ligne de coupe', () => {
     lancerDecoupage(bien)
     const lotsB = bilanScenario(bien).lots.filter((l) => l.tenement === 'B').length
 
-    ajouterLigne(bien, [pt(150, 250), pt(1050, 250)])
+    ajouterLigne(bien, [pt(-50, 250), pt(1050, 250)])
 
     expect(bilanScenario(bien).lots.filter((l) => l.tenement === 'B')).toHaveLength(lotsB)
   })
@@ -57,6 +57,47 @@ describe('Ajouter une ligne de coupe', () => {
 
     expect(ajouterLigne(bien, [pt(2000, -100), pt(2000, 600)])).toBe(false)
     expect(scenarioCourant(bien).lignes).toEqual(lignes)
+  })
+})
+
+describe('Ligne de coupe qui ne traverse pas tout le Tènement', () => {
+  test('une ligne tracée dont une extrémité est dans le Tènement est refusée', () => {
+    const { bien } = bienDecoupe()
+    const lignes = structuredClone(scenarioCourant(bien).lignes)
+
+    expect(ajouterLigne(bien, [pt(500, 250), pt(500, 600)])).toBe(false)
+    expect(scenarioCourant(bien).lignes).toEqual(lignes)
+  })
+
+  test('déplacer une extrémité de ligne à l’intérieur du Tènement est refusé', () => {
+    const { bien, ids } = bienDecoupe()
+
+    // La ligne entre Paul et Marie (x = 200) ne monte plus que jusqu'à y = 400
+    expect(modifierLigne(bien, 0, [pt(200, -1), pt(200, 400)])).toBe(false)
+    expect(bilanDe(bien, ids.Paul).surfaceCadastrale).toBeCloseTo(10 * HA, -1)
+  })
+
+  test('une ligne en U dont les extrémités sont hors du Tènement découpe exactement le U', () => {
+    const { bien, ids } = bienDecoupe()
+
+    // U de 400 m × 300 m entré par le nord dans le Lot de Marie
+    const accepte = ajouterLigne(bien, [pt(300, 600), pt(300, 200), pt(700, 200), pt(700, 600)])
+
+    expect(accepte).toBe(true)
+    const surfaces = bilanScenario(bien)
+      .lots.filter((l) => l.acquereur === ids.Marie)
+      .map((l) => l.surfaceMesuree)
+      .sort((a, b) => a - b)
+    expect(surfaces).toHaveLength(2)
+    expect(surfaces[0]).toBeCloseTo(12 * HA, -1)
+    expect(bilanDe(bien, ids.Marie).surfaceCadastrale).toBeCloseTo(40 * HA, -1)
+    expect(toutAttribue(bien)).toBe(true)
+  })
+
+  test('une ligne en U dont les extrémités sont dans le Tènement est refusée', () => {
+    const { bien } = bienDecoupe()
+
+    expect(ajouterLigne(bien, [pt(300, 400), pt(300, 200), pt(700, 200), pt(700, 400)])).toBe(false)
   })
 })
 
@@ -88,7 +129,7 @@ describe('Supprimer une ligne de coupe', () => {
 
   test('supprimer une ligne ajoutée redonne les Lots d’avant', () => {
     const { bien, ids } = bienDecoupe()
-    ajouterLigne(bien, [pt(150, 250), pt(1050, 250)])
+    ajouterLigne(bien, [pt(-50, 250), pt(1050, 250)])
 
     supprimerLigne(bien, 1)
 

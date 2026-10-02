@@ -7,6 +7,7 @@ import {
   axeLong,
   boite,
   ligneTouche,
+  pointDans,
   pointVersL93,
   pointVersWgs84,
   polygonesVersWgs84,
@@ -382,12 +383,21 @@ function signaturesDesLots(parcelles: Parcelle[], lignes: LigneCoupe[]): Set<str
   )
 }
 
+// Vrai si une extrémité de la ligne (WGS84) est à l'intérieur d'une des Parcelles : la ligne ne traverse
+// alors pas le Tènement de part en part, et la coupe réelle (ligne prolongée) différerait du tracé
+function extremiteDedans(points: Position[], parcelles: Parcelle[]): boolean {
+  return [points[0], points[points.length - 1]].some((p) =>
+    parcelles.some((parcelle) => pointDans(pointVersL93(p), versL93(parcelle.geometrie))),
+  )
+}
+
 // Remplace les points (WGS84) de la ligne de coupe d'indice donné. La modification est refusée (false) si
-// elle vide ou crée un Lot dans le Tènement : chaque Lot garde ainsi son Acquéreur et tout reste attribué.
+// une extrémité entre dans le Tènement, ou si elle vide ou crée un Lot : chaque Lot garde ainsi son Acquéreur
+// et tout reste attribué.
 export function modifierLigne(bien: Bien, index: number, points: Position[]): boolean {
   const ligne = scenarioCourant(bien).lignes[index]
   const tenement = tenementsDuBien(bien).find((t) => t.cle === ligne?.tenement)
-  if (!tenement || points.length < 2) {
+  if (!tenement || points.length < 2 || extremiteDedans(points, tenement.parcelles)) {
     return false
   }
 
@@ -405,8 +415,12 @@ export function modifierLigne(bien: Bien, index: number, points: Position[]): bo
 }
 
 // Ajoute une ligne de coupe (WGS84) à chaque Tènement que son trace touche et découpe ; les deux Lots issus
-// d'un Lot gardent son Acquéreur. Refusée (false) si elle ne découpe aucun Lot.
+// d'un Lot gardent son Acquéreur. Refusée (false) si une extrémité est dans le Bien ou si elle ne découpe aucun Lot.
 export function ajouterLigne(bien: Bien, points: Position[]): boolean {
+  if (extremiteDedans(points, bien.parcelles)) {
+    return false
+  }
+
   const trace = points.map(pointVersL93)
   let acceptee = false
   for (const { cle, parcelles } of tenementsDuBien(bien)) {

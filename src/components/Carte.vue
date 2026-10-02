@@ -192,7 +192,7 @@ trace.on('drawend', (e) => {
   const points = (e.feature.getGeometry() as LineString).getCoordinates().map((c) => toLonLat(c))
   basculerTrace()
   if (!ajouterLigne(props.bien, points)) {
-    alert('La ligne doit traverser au moins un Lot.')
+    alert('La ligne doit traverser au moins un Lot de part en part : commencez et finissez-la hors du Bien.')
   }
 })
 

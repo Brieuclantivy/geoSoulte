@@ -149,7 +149,7 @@ function segmentsSeCoupent(a: Position, b: Position, c: Position, d: Position): 
   return orient(a, b, c) !== orient(a, b, d) && orient(c, d, a) !== orient(c, d, b)
 }
 
-function pointDans(p: Position, polygones: PolygonesL93): boolean {
+export function pointDans(p: Position, polygones: PolygonesL93): boolean {
   return polygones.some((anneaux) => {
     let dedans = false
     for (const anneau of anneaux) {
