@@ -185,8 +185,14 @@ export function renommerAcquereur(bien: Bien, id: string, nom: string): void {
   }
 }
 
-// Les Découpages n'ont plus de sens sans cet Acquéreur : ils sont effacés dans tous les Scénarios
+// Scénarios où l'Acquéreur a au moins un Lot
+export function scenariosAvecLots(bien: Bien, acquereur: string): Scenario[] {
+  return bien.scenarios.filter((s) => s.attributions.some((a) => a.acquereur === acquereur))
+}
+
+// Le Découpage des Scénarios où l'Acquéreur a des Lots n'a plus de sens sans lui : il est effacé
 export function supprimerAcquereur(bien: Bien, id: string): void {
+  const aEffacer = scenariosAvecLots(bien, id)
   bien.acquereurs = bien.acquereurs.filter((a) => a.id !== id)
   for (const scenario of bien.scenarios) {
     delete scenario.objectifs[id]
@@ -197,8 +203,10 @@ export function supprimerAcquereur(bien: Bien, id: string): void {
       }
     }
 
-    scenario.lignes = []
-    scenario.attributions = []
+    if (aEffacer.includes(scenario)) {
+      scenario.lignes = []
+      scenario.attributions = []
+    }
   }
 }
 

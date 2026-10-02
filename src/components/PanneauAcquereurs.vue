@@ -8,6 +8,7 @@ import {
   fixerTolerance,
   renommerAcquereur,
   scenarioCourant,
+  scenariosAvecLots,
   supprimerAcquereur,
   verrouiller,
   type Bien,
@@ -67,7 +68,9 @@ function ecart(id: string): string {
 }
 
 function supprimer(id: string, nom: string) {
-  if (confirm(`Supprimer ${nom} ? Le Découpage sera effacé.`)) {
+  const effaces = scenariosAvecLots(props.bien, id).map((s) => `« ${s.nom} »`)
+  const consequence = effaces.length ? ` Le Découpage sera effacé dans : ${effaces.join(', ')}.` : ''
+  if (confirm(`Supprimer ${nom} ?${consequence}`)) {
     supprimerAcquereur(props.bien, id)
   }
 }

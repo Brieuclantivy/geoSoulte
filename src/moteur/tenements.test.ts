@@ -2,15 +2,19 @@ import { describe, expect, test } from 'vitest'
 import {
   ajouterAcquereur,
   ajouterParcelle,
+  choisirScenario,
   creerBien,
+  dupliquerScenario,
   fixerObjectif,
+  fixerOrdre,
   fixerTolerance,
+  scenariosAvecLots,
   supprimerAcquereur,
   verrouiller,
   type Bien,
   scenarioCourant,
 } from './bien'
-import { bilanScenario, lancerDecoupage } from './decoupage'
+import { bilanScenario, lancerDecoupage, reattribuer } from './decoupage'
 import { rectangle } from './fixtures'
 
 const HA = 10000
@@ -118,5 +122,60 @@ describe('Attributions verrouillées', () => {
     supprimerAcquereur(bien, ids.Paul)
 
     expect(scenarioCourant(bien).verrouillages).toEqual({})
+  })
+})
+
+describe('Supprimer un Acquéreur', () => {
+  // Scénario 1 : Paul a des Lots. Scénario 2 : Paul n'en a pas, mais il est dans l'ordre et a un verrouillage
+  // posé après le Découpage, ajusté à la main
+  function deuxScenarios(): { bien: Bien; ids: Record<string, string>; s1: string; s2: string } {
+    const bien = deuxTenements(10)
+    const ids = groupe(bien, { Paul: 10, Marie: 20, Jean: 20 })
+    lancerDecoupage(bien)
+    const s1 = bien.courant
+    const s2 = dupliquerScenario(bien)
+    choisirScenario(bien, s2)
+    fixerObjectif(bien, ids.Paul, { unite: 'ha', valeur: 0 })
+    fixerObjectif(bien, ids.Marie, { unite: 'ha', valeur: 25 })
+    fixerObjectif(bien, ids.Jean, { unite: 'ha', valeur: 25 })
+    fixerOrdre(bien, [ids.Jean, ids.Paul, ids.Marie])
+    lancerDecoupage(bien)
+    verrouiller(bien, 'A', ids.Paul)
+    reattribuer(bien, 'A', '', ids.Jean)
+    return { bien, ids, s1, s2 }
+  }
+
+  test('seuls les Scénarios où il a des Lots perdent leur Découpage', () => {
+    const { bien, ids, s1, s2 } = deuxScenarios()
+    const scenario = (id: string) => bien.scenarios.find((s) => s.id === id)!
+    expect(scenario(s1).attributions.some((a) => a.acquereur === ids.Paul)).toBe(true)
+    const { lignes, attributions, ajuste } = structuredClone(scenario(s2))
+    expect(lignes.length).toBeGreaterThan(0)
+    expect(ajuste).toBe(true)
+
+    expect(scenariosAvecLots(bien, ids.Paul).map((s) => s.id)).toEqual([s1])
+    supprimerAcquereur(bien, ids.Paul)
+
+    expect(scenario(s1).lignes).toEqual([])
+    expect(scenario(s1).attributions).toEqual([])
+    expect(scenario(s2).lignes).toEqual(lignes)
+    expect(scenario(s2).attributions).toEqual(attributions)
+    expect(scenario(s2).ajuste).toBe(true)
+  })
+
+  test('son Objectif, son rang dans l’ordre et ses verrouillages disparaissent de tous les Scénarios', () => {
+    const { bien, ids } = deuxScenarios()
+    verrouiller(bien, 'B', ids.Paul)
+    choisirScenario(bien, bien.scenarios[0].id)
+    fixerOrdre(bien, [ids.Paul, ids.Marie])
+    verrouiller(bien, 'B', ids.Paul)
+
+    supprimerAcquereur(bien, ids.Paul)
+
+    for (const scenario of bien.scenarios) {
+      expect(scenario.objectifs[ids.Paul]).toBeUndefined()
+      expect(scenario.ordre).not.toContain(ids.Paul)
+      expect(Object.values(scenario.verrouillages)).not.toContain(ids.Paul)
+    }
   })
 })
