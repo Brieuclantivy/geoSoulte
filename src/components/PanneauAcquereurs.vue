@@ -56,6 +56,16 @@ function enUnite(valeur: number, unite: Objectif['unite']): string {
   return unite === 'ha' ? hectares(valeur * 10000) : euros(valeur)
 }
 
+// Écart à l'Objectif, signé, dans l'unité de l'Objectif
+function ecart(id: string): string {
+  const { objectif, ecart } = bilanDe(id)!
+  if (!objectif || ecart === null) {
+    return ''
+  }
+
+  return (ecart > 0 ? '+' : '') + (objectif.unite === 'ha' ? hectares(ecart) : euros(ecart))
+}
+
 function supprimer(id: string, nom: string) {
   if (confirm(`Supprimer ${nom} ? Le Découpage sera effacé.`)) {
     supprimerAcquereur(props.bien, id)
@@ -80,6 +90,7 @@ function deposer(cible: string) {
 }
 
 const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
+const acquereur = (id: string | null) => props.bien.acquereurs.find((a) => a.id === id)
 </script>
 
 <template>
@@ -150,7 +161,7 @@ const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
 
     <table v-if="bilan.lots.some((l) => l.acquereur)" class="bilan">
       <thead>
-        <tr><th>Acquéreur</th><th>Surface cadastrale</th><th>Surface mesurée</th><th>Coût</th><th>Objectif</th></tr>
+        <tr><th>Acquéreur</th><th>Surface cadastrale</th><th>Surface mesurée</th><th>Coût</th><th>Objectif</th><th>Écart</th></tr>
       </thead>
       <tbody>
         <tr v-for="a in acquereursOrdonnes(bien)" :key="a.id">
@@ -163,9 +174,32 @@ const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
               {{ enUnite(bilanDe(a.id)!.objectif!.valeur, bilanDe(a.id)!.objectif!.unite) }}
             </template>
           </td>
+          <td class="nombre">{{ ecart(a.id) }}</td>
         </tr>
       </tbody>
     </table>
+    <details v-if="bilan.lots.some((l) => l.acquereur)">
+      <summary>Bilan par Lot ({{ bilan.lots.length }})</summary>
+      <table>
+        <thead>
+          <tr><th>Acquéreur</th><th>Surface mesurée</th><th>Surface cadastrale</th><th>Coût</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="l in bilan.lots" :key="l.tenement + l.signature">
+            <td>
+              <template v-if="acquereur(l.acquereur)">
+                <span class="pastille" :style="{ background: acquereur(l.acquereur)!.couleur }"></span>
+                {{ acquereur(l.acquereur)!.nom }}
+              </template>
+              <template v-else>Non attribué</template>
+            </td>
+            <td class="nombre">{{ hectares(l.surfaceMesuree) }}</td>
+            <td class="nombre">{{ hectares(l.surfaceCadastrale) }}</td>
+            <td class="nombre">{{ l.cout === null ? '—' : euros(l.cout) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </details>
     <p v-if="scenarioCourant(bien).lignes.length" class="aide">
       Ajustez les lignes de coupe sur la carte : glissez un sommet, tirez le milieu d'un segment pour ajouter un
       sommet, Alt+clic pour en supprimer un. Cliquez sur un Lot pour le réattribuer, sur une ligne pour la supprimer.
