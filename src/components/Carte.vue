@@ -13,7 +13,7 @@ import Modify from 'ol/interaction/Modify'
 import Draw from 'ol/interaction/Draw'
 import { Circle, Fill, Stroke, Style } from 'ol/style'
 import { fromLonLat, toLonLat } from 'ol/proj'
-import { fixerOrientation, retirerParcelle, scenarioCourant, type Bien, type BilanBien } from '../moteur/bien'
+import { fixerOrientation, scenarioCourant, type Bien, type BilanBien } from '../moteur/bien'
 import Boussole from './Boussole.vue'
 import { ajouterLigne, reattribuer, supprimerLigne, type BilanScenario } from '../moteur/decoupage'
 
@@ -23,6 +23,8 @@ const emit = defineEmits<{
   clic: [lon: number, lat: number, idParcelle: string | null]
   // Ligne de coupe en cours de modification (final = false pendant le geste, true à la fin)
   ligne: [index: number, points: number[][], final: boolean]
+  // Retrait d'une Parcelle depuis le menu d'un Lot
+  retirer: [idParcelle: string]
 }>()
 
 // Fonds WMTS de la Géoplateforme IGN, interrogés en XYZ (matrices PM_*, EPSG:3857)
@@ -229,10 +231,7 @@ function choisirAcquereur(acquereur: string) {
 
 function retirerLaParcelle() {
   if (menu.value?.type === 'lot' && menu.value.parcelle) {
-    const id = menu.value.parcelle
-    if (confirm(`Retirer la Parcelle ${id} du Bien ? Le Découpage de son Tènement sera effacé.`)) {
-      retirerParcelle(props.bien, id)
-    }
+    emit('retirer', menu.value.parcelle)
   }
 
   menu.value = null

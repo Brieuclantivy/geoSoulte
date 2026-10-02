@@ -259,13 +259,40 @@ export function retirerParcelle(bien: Bien, id: string): void {
   changerParcelles(bien, bien.parcelles.filter((p) => p.id !== id))
 }
 
+// Clés des Tènements dont la composition reste la même si le Bien passe aux Parcelles données
+function tenementsIntacts(bien: Bien, parcelles: Parcelle[]): Set<string> {
+  const composition = (t: { cle: string; parcelles: Parcelle[] }) => t.parcelles.map((p) => p.id).sort().join()
+  const avant = new Map(tenementsDuBien(bien).map((t) => [t.cle, composition(t)]))
+  const apres = tenementsDuBien({ ...bien, parcelles })
+  return new Set(apres.filter((t) => avant.get(t.cle) === composition(t)).map((t) => t.cle))
+}
+
+// Scénarios qui perdraient le Découpage (lignes, attributions ou verrouillage) d'un Tènement actuel
+// si le Bien passait aux Parcelles données
+function scenariosTouches(bien: Bien, parcelles: Parcelle[]): Scenario[] {
+  const intacts = tenementsIntacts(bien, parcelles)
+  const modifies = new Set(tenementsDuBien(bien).map((t) => t.cle).filter((cle) => !intacts.has(cle)))
+  return bien.scenarios.filter(
+    (s) =>
+      s.lignes.some((l) => modifies.has(l.tenement)) ||
+      s.attributions.some((a) => modifies.has(a.tenement)) ||
+      Object.keys(s.verrouillages).some((cle) => modifies.has(cle)),
+  )
+}
+
+export function scenariosTouchesParAjout(bien: Bien, parcelle: Parcelle): Scenario[] {
+  return bien.parcelles.some((p) => p.id === parcelle.id) ? [] : scenariosTouches(bien, [...bien.parcelles, parcelle])
+}
+
+export function scenariosTouchesParRetrait(bien: Bien, id: string): Scenario[] {
+  return scenariosTouches(bien, bien.parcelles.filter((p) => p.id !== id))
+}
+
 // Remplace les Parcelles du Bien. Dans tous les Scénarios, le Découpage (lignes, attributions, verrouillages)
 // des Tènements dont la composition change est effacé ; celui des Tènements intacts est conservé.
 function changerParcelles(bien: Bien, parcelles: Parcelle[]): void {
-  const composition = (t: { cle: string; parcelles: Parcelle[] }) => t.parcelles.map((p) => p.id).sort().join()
-  const avant = new Map(tenementsDuBien(bien).map((t) => [t.cle, composition(t)]))
+  const intacts = tenementsIntacts(bien, parcelles)
   bien.parcelles = parcelles
-  const intacts = new Set(tenementsDuBien(bien).filter((t) => avant.get(t.cle) === composition(t)).map((t) => t.cle))
   for (const scenario of bien.scenarios) {
     scenario.lignes = scenario.lignes.filter((l) => intacts.has(l.tenement))
     scenario.attributions = scenario.attributions.filter((a) => intacts.has(a.tenement))

@@ -6,8 +6,11 @@ import {
   creerBien,
   dupliquerScenario,
   fixerObjectif,
+  creerScenario,
   retirerParcelle,
   scenarioCourant,
+  scenariosTouchesParAjout,
+  scenariosTouchesParRetrait,
   verrouiller,
   type Bien,
 } from './bien'
@@ -141,5 +144,46 @@ describe('Parcelles modifiées après un Découpage', () => {
     ajouterAcquereur(bien, 'Paul')
 
     expect(bilanScenario(bien).avertissements).not.toContain(NON_ATTRIBUE)
+  })
+})
+
+describe('Scénarios touchés par un changement de Parcelles', () => {
+  // Scénario A découpé ; Scénario B créé ensuite, sans Découpage
+  function deuxScenarios() {
+    const { bien } = bienDecoupe()
+    const a = bien.courant
+    const b = creerScenario(bien, 'B')
+    return { bien, a, b }
+  }
+
+  const ids = (scenarios: { id: string }[]) => scenarios.map((s) => s.id)
+
+  test('retirer une Parcelle d’un Tènement découpé dans A seulement signale A, pas B', () => {
+    const { bien, a } = deuxScenarios()
+
+    expect(ids(scenariosTouchesParRetrait(bien, 'B'))).toEqual([a])
+  })
+
+  test('ajouter une Parcelle contiguë au Tènement signale A ; une Parcelle isolée ne signale rien', () => {
+    const { bien, a } = deuxScenarios()
+
+    expect(ids(scenariosTouchesParAjout(bien, rectangle('D', 0, 500, 400, 100)))).toEqual([a])
+    expect(scenariosTouchesParAjout(bien, rectangle('E', 3000, 0, 100, 100))).toEqual([])
+  })
+
+  test('un Scénario qui n’a qu’un verrouillage sur le Tènement est signalé', () => {
+    const { bien, a, b } = deuxScenarios()
+    choisirScenario(bien, b)
+    verrouiller(bien, 'C', bien.acquereurs[0].id)
+
+    expect(ids(scenariosTouchesParRetrait(bien, 'C'))).toEqual([a, b])
+  })
+
+  test('sans aucun Découpage, rien n’est signalé', () => {
+    const bien = creerBien()
+    ajouterParcelle(bien, rectangle('A', 0, 0, 200, 500))
+
+    expect(scenariosTouchesParRetrait(bien, 'A')).toEqual([])
+    expect(scenariosTouchesParAjout(bien, rectangle('B', 200, 0, 200, 500))).toEqual([])
   })
 })
