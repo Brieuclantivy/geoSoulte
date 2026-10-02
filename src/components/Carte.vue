@@ -13,7 +13,7 @@ import Modify from 'ol/interaction/Modify'
 import Draw from 'ol/interaction/Draw'
 import { Circle, Fill, Stroke, Style } from 'ol/style'
 import { fromLonLat, toLonLat } from 'ol/proj'
-import { fixerOrientation, scenarioCourant, type Bien, type BilanBien } from '../moteur/bien'
+import { fixerOrientation, retirerParcelle, scenarioCourant, type Bien, type BilanBien } from '../moteur/bien'
 import Boussole from './Boussole.vue'
 import { ajouterLigne, reattribuer, supprimerLigne, type BilanScenario } from '../moteur/decoupage'
 
@@ -212,9 +212,9 @@ function touche(e: KeyboardEvent) {
   }
 }
 
-// Menu ouvert par un clic sur un Lot (réattribution) ou sur une ligne de coupe (suppression)
+// Menu ouvert par un clic sur un Lot (réattribution, retrait de la Parcelle cliquée) ou sur une ligne de coupe (suppression)
 const menu = ref<
-  | { x: number; y: number; type: 'lot'; tenement: string; signature: string }
+  | { x: number; y: number; type: 'lot'; tenement: string; signature: string; parcelle: string | null }
   | { x: number; y: number; type: 'ligne'; index: number }
   | null
 >(null)
@@ -222,6 +222,17 @@ const menu = ref<
 function choisirAcquereur(acquereur: string) {
   if (menu.value?.type === 'lot') {
     reattribuer(props.bien, menu.value.tenement, menu.value.signature, acquereur)
+  }
+
+  menu.value = null
+}
+
+function retirerLaParcelle() {
+  if (menu.value?.type === 'lot' && menu.value.parcelle) {
+    const id = menu.value.parcelle
+    if (confirm(`Retirer la Parcelle ${id} du Bien ? Le Découpage de son Tènement sera effacé.`)) {
+      retirerParcelle(props.bien, id)
+    }
   }
 
   menu.value = null
@@ -262,14 +273,15 @@ onMounted(() => {
       return
     }
 
+    const parcelle = sourceBien.getFeaturesAtCoordinate(e.coordinate)[0]
     const lot = sourceLots.getFeaturesAtCoordinate(e.coordinate)[0]
     if (lot) {
-      menu.value = { x, y, type: 'lot', tenement: lot.get('tenement'), signature: lot.get('signature') }
+      const id = parcelle ? String(parcelle.getId()) : null
+      menu.value = { x, y, type: 'lot', tenement: lot.get('tenement'), signature: lot.get('signature'), parcelle: id }
       return
     }
 
     const [lon, lat] = toLonLat(e.coordinate)
-    const parcelle = sourceBien.getFeaturesAtCoordinate(e.coordinate)[0]
     emit('clic', lon, lat, parcelle ? String(parcelle.getId()) : null)
   })
 })
@@ -326,6 +338,9 @@ defineExpose({ centrerSur })
         <button v-for="a in bien.acquereurs" :key="a.id" type="button" @click="choisirAcquereur(a.id)">
           <span class="pastille" :style="{ background: a.couleur }"></span> {{ a.nom }}
         </button>
+        <button v-if="menu.parcelle" type="button" class="retrait" @click="retirerLaParcelle">
+          Retirer la Parcelle {{ menu.parcelle }} du Bien
+        </button>
       </template>
       <button v-else type="button" @click="supprimerLaLigne">Supprimer cette ligne de coupe</button>
     </div>
@@ -371,6 +386,9 @@ defineExpose({ centrerSur })
 }
 .menu button {
   text-align: left;
+}
+.menu .retrait {
+  margin-top: 4px;
 }
 .pastille {
   display: inline-block;
