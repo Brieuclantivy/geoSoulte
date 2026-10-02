@@ -38,6 +38,12 @@ function unite(id: string, e: Event) {
   fixerObjectif(props.bien, id, { unite, valeur: props.bien.scenario.objectifs[id]?.valeur ?? 0 })
 }
 
+function lancer() {
+  if (!props.bien.scenario.ajuste || confirm('Relancer le Découpage automatique efface vos ajustements manuels des lignes et des attributions. Continuer ?')) {
+    lancerDecoupage(props.bien)
+  }
+}
+
 function tolerance(e: Event) {
   const valeur = nombreSaisi(e)
   if (valeur !== null && valeur >= 0) {
@@ -136,7 +142,7 @@ const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
       </label>
     </details>
     <p>
-      <button type="button" :disabled="!bien.parcelles.length || !bien.acquereurs.length" @click="lancerDecoupage(bien)">
+      <button type="button" :disabled="!bien.parcelles.length || !bien.acquereurs.length" @click="lancer">
         Lancer le Découpage automatique
       </button>
     </p>
@@ -161,7 +167,7 @@ const bilanDe = (id: string) => props.bilan.acquereurs.find((a) => a.id === id)
     </table>
     <p v-if="bien.scenario.lignes.length" class="aide">
       Ajustez les lignes de coupe sur la carte : glissez un sommet, tirez le milieu d'un segment pour ajouter un
-      sommet, Alt+clic pour en supprimer un.
+      sommet, Alt+clic pour en supprimer un. Cliquez sur un Lot pour le réattribuer, sur une ligne pour la supprimer.
     </p>
     <ul v-if="bilan.avertissements.length" class="avertissements">
       <li v-for="(a, i) in bilan.avertissements" :key="i">{{ a }}</li>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import OlMap from 'ol/Map'
 import View from 'ol/View'
 import TileLayer from 'ol/layer/Tile'
@@ -10,11 +10,12 @@ import GeoJSON from 'ol/format/GeoJSON'
 import Feature from 'ol/Feature'
 import LineString from 'ol/geom/LineString'
 import Modify from 'ol/interaction/Modify'
+import Draw from 'ol/interaction/Draw'
 import { Circle, Fill, Stroke, Style } from 'ol/style'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { fixerOrientation, type Bien, type BilanBien } from '../moteur/bien'
 import Boussole from './Boussole.vue'
-import type { BilanScenario } from '../moteur/decoupage'
+import { ajouterLigne, reattribuer, supprimerLigne, type BilanScenario } from '../moteur/decoupage'
 
 const props = defineProps<{ bien: Bien; bilan: BilanBien; scenario: BilanScenario }>()
 const emit = defineEmits<{
@@ -105,7 +106,11 @@ watch(
         continue
       }
 
-      const feature = geojson.readFeature({ type: 'Feature', geometry: lot.geometrie, properties: { couleur } })
+      const feature = geojson.readFeature({
+        type: 'Feature',
+        geometry: lot.geometrie,
+        properties: { couleur, tenement: lot.tenement, signature: lot.signature },
+      })
       if (!Array.isArray(feature)) {
         sourceLots.addFeature(feature)
       }
@@ -128,7 +133,7 @@ function dessinerLignes() {
     sourceLignes.addFeature(feature)
   })
 }
-watch(() => props.bien.scenario.lignes, dessinerLignes, { immediate: true })
+watch(() => props.bien.scenario.lignes, dessinerLignes, { immediate: true, deep: true })
 
 const modification = new Modify({
   source: sourceLignes,
@@ -162,6 +167,56 @@ modification.on('modifyend', (e) => {
   dessinerLignes()
 })
 
+// Tracé d'une nouvelle ligne de coupe : clic pour chaque sommet, double-clic pour finir, Échap pour annuler
+const trace = new Draw({ type: 'LineString' })
+const enTrace = ref(false)
+trace.on('drawend', (e) => {
+  const points = (e.feature.getGeometry() as LineString).getCoordinates().map((c) => toLonLat(c))
+  basculerTrace()
+  if (!ajouterLigne(props.bien, points)) {
+    alert('La ligne doit traverser au moins un Lot.')
+  }
+})
+
+function basculerTrace() {
+  enTrace.value = !enTrace.value
+  if (enTrace.value) {
+    carte.addInteraction(trace)
+  } else {
+    carte.removeInteraction(trace)
+  }
+}
+
+function touche(e: KeyboardEvent) {
+  if (e.key === 'Escape' && enTrace.value) {
+    trace.abortDrawing()
+    basculerTrace()
+  }
+}
+
+// Menu ouvert par un clic sur un Lot (réattribution) ou sur une ligne de coupe (suppression)
+const menu = ref<
+  | { x: number; y: number; type: 'lot'; tenement: string; signature: string }
+  | { x: number; y: number; type: 'ligne'; index: number }
+  | null
+>(null)
+
+function choisirAcquereur(acquereur: string) {
+  if (menu.value?.type === 'lot') {
+    reattribuer(props.bien, menu.value.tenement, menu.value.signature, acquereur)
+  }
+
+  menu.value = null
+}
+
+function supprimerLaLigne() {
+  if (menu.value?.type === 'ligne') {
+    supprimerLigne(props.bien, menu.value.index)
+  }
+
+  menu.value = null
+}
+
 const cible = ref<HTMLDivElement>()
 let carte: OlMap
 
@@ -172,9 +227,25 @@ onMounted(() => {
     view: new View({ center: fromLonLat([2.5, 46.6]), zoom: 6 }),
   })
   carte.addInteraction(modification)
+  window.addEventListener('keydown', touche)
+  carte.on('movestart', () => (menu.value = null))
   carte.on('singleclick', (e) => {
-    // Un clic sur une ligne de coupe (ex. Alt+clic sur un sommet) ne touche pas aux Parcelles
-    if (carte.hasFeatureAtPixel(e.pixel, { layerFilter: (c) => c === coucheLignes, hitTolerance: 6 })) {
+    menu.value = null
+    // Pendant un tracé, les clics posent des sommets ; Alt+clic supprime un sommet de ligne
+    if (enTrace.value || e.originalEvent.altKey) {
+      return
+    }
+
+    const [x, y] = e.pixel
+    const ligne = carte.forEachFeatureAtPixel(e.pixel, (f) => f, { layerFilter: (c) => c === coucheLignes, hitTolerance: 6 })
+    if (ligne) {
+      menu.value = { x, y, type: 'ligne', index: ligne.get('index') }
+      return
+    }
+
+    const lot = sourceLots.getFeaturesAtCoordinate(e.coordinate)[0]
+    if (lot) {
+      menu.value = { x, y, type: 'lot', tenement: lot.get('tenement'), signature: lot.get('signature') }
       return
     }
 
@@ -183,6 +254,8 @@ onMounted(() => {
     emit('clic', lon, lat, parcelle ? String(parcelle.getId()) : null)
   })
 })
+
+onUnmounted(() => window.removeEventListener('keydown', touche))
 
 function centrerSur(lon: number, lat: number) {
   carte.getView().animate({ center: fromLonLat([lon, lat]), zoom: 15 })
@@ -194,6 +267,21 @@ defineExpose({ centrerSur })
 <template>
   <div class="carte">
     <div ref="cible" class="ol"></div>
+    <div class="outils">
+      <button v-if="bien.scenario.lignes.length || bien.scenario.attributions.length" type="button" @click="basculerTrace">
+        {{ enTrace ? 'Annuler le tracé' : '✏ Tracer une ligne de coupe' }}
+      </button>
+      <span v-if="enTrace" class="aide">Clic pour chaque sommet, double-clic pour finir</span>
+    </div>
+    <div v-if="menu" class="menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }">
+      <template v-if="menu.type === 'lot'">
+        <div class="titre">Attribuer ce Lot à</div>
+        <button v-for="a in bien.acquereurs" :key="a.id" type="button" @click="choisirAcquereur(a.id)">
+          <span class="pastille" :style="{ background: a.couleur }"></span> {{ a.nom }}
+        </button>
+      </template>
+      <button v-else type="button" @click="supprimerLaLigne">Supprimer cette ligne de coupe</button>
+    </div>
     <Boussole :orientation="bien.scenario.orientation" @change="(o) => fixerOrientation(bien, o)" />
     <fieldset class="fonds">
       <legend>Fonds</legend>
@@ -205,6 +293,44 @@ defineExpose({ centrerSur })
 </template>
 
 <style scoped>
+.outils {
+  position: absolute;
+  top: 8px;
+  left: 48px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.outils .aide {
+  background: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.menu {
+  position: absolute;
+  background: white;
+  border: 1px solid #999;
+  border-radius: 4px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.menu .titre {
+  color: #666;
+}
+.menu button {
+  text-align: left;
+}
+.pastille {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
 .carte {
   position: relative;
   height: 100%;

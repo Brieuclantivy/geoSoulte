@@ -6,6 +6,7 @@ import {
   aire,
   axeLong,
   boite,
+  ligneTouche,
   pointVersL93,
   pointVersWgs84,
   polygonesVersWgs84,
@@ -44,6 +45,9 @@ export interface BilanScenario {
 }
 
 const TOLERANCE_BISSECTION = 0.01 // m²
+
+// Pour les calculs purement géométriques, où les prix n'interviennent pas
+const SANS_PRIX: PrixEffectifs = { parM2: new Map(), prixBien: null, ecartAvantRecalage: null, sansPrix: [] }
 
 // Morceau d'une Parcelle situé d'un même côté de chaque ligne de coupe
 interface Morceau {
@@ -241,6 +245,7 @@ export function lancerDecoupage(bien: Bien): void {
   const { verrouillages, tolerance, orientation } = bien.scenario
   bien.scenario.lignes = []
   bien.scenario.attributions = []
+  bien.scenario.ajuste = false
 
   const tenements = tenementsDuBien(bien).map(({ cle, parcelles }) => ({
     cle,
@@ -364,9 +369,8 @@ export function lancerDecoupage(bien: Bien): void {
 
 // Signatures des Lots non vides d'un Tènement (les éclats de moins d'1 dm² dus aux arrondis sont ignorés)
 function signaturesDesLots(parcelles: Parcelle[], lignes: LigneCoupe[]): Set<string> {
-  const sansPrix: PrixEffectifs = { parM2: new Map(), prixBien: null, ecartAvantRecalage: null, sansPrix: [] }
   return new Set(
-    morceaux(parcelles, lignes, sansPrix)
+    morceaux(parcelles, lignes, SANS_PRIX)
       .filter((m) => aire(m.geometrie) >= 0.01)
       .map((m) => m.signature),
   )
@@ -390,5 +394,82 @@ export function modifierLigne(bien: Bien, index: number, points: Position[]): bo
   }
 
   bien.scenario.lignes = modifiees
+  bien.scenario.ajuste = true
   return true
+}
+
+// Ajoute une ligne de coupe (WGS84) à chaque Tènement que son trace touche et découpe ; les deux Lots issus
+// d'un Lot gardent son Acquéreur. Refusée (false) si elle ne découpe aucun Lot.
+export function ajouterLigne(bien: Bien, points: Position[]): boolean {
+  const trace = points.map(pointVersL93)
+  let acceptee = false
+  for (const { cle, parcelles } of tenementsDuBien(bien)) {
+    if (!parcelles.some((p) => ligneTouche(trace, versL93(p.geometrie)))) {
+      continue
+    }
+
+    const ligne = { tenement: cle, points }
+    const lignes = bien.scenario.lignes.filter((l) => l.tenement === cle)
+    const avant = signaturesDesLots(parcelles, lignes)
+    if (signaturesDesLots(parcelles, [...lignes, ligne]).size === avant.size) {
+      continue
+    }
+
+    acceptee = true
+    bien.scenario.lignes.push(ligne)
+    bien.scenario.attributions = bien.scenario.attributions.flatMap((a) =>
+      a.tenement === cle
+        ? [
+            { ...a, signature: a.signature + 'G' },
+            { ...a, signature: a.signature + 'D' },
+          ]
+        : [a],
+    )
+  }
+
+  if (acceptee) {
+    bien.scenario.ajuste = true
+  }
+
+  return acceptee
+}
+
+// Supprime une ligne de coupe ; chaque Lot fusionné va à l'Acquéreur de sa plus grande partie
+export function supprimerLigne(bien: Bien, index: number): void {
+  const ligne = bien.scenario.lignes[index]
+  const tenement = tenementsDuBien(bien).find((t) => t.cle === ligne?.tenement)
+  if (!tenement) {
+    return
+  }
+
+  const lignes = bien.scenario.lignes.filter((l) => l.tenement === ligne.tenement)
+  const rang = lignes.indexOf(ligne)
+  const surfaces = new Map<string, number>()
+  for (const m of morceaux(tenement.parcelles, lignes, SANS_PRIX)) {
+    surfaces.set(m.signature, (surfaces.get(m.signature) ?? 0) + aire(m.geometrie))
+  }
+
+  const fusion = new Map<string, { acquereur: string; surface: number }>()
+  for (const a of bien.scenario.attributions.filter((a) => a.tenement === ligne.tenement)) {
+    const signature = a.signature.slice(0, rang) + a.signature.slice(rang + 1)
+    const surface = surfaces.get(a.signature) ?? 0
+    if (surface > (fusion.get(signature)?.surface ?? -1)) {
+      fusion.set(signature, { acquereur: a.acquereur, surface })
+    }
+  }
+
+  bien.scenario.lignes = bien.scenario.lignes.filter((_, i) => i !== index)
+  bien.scenario.attributions = [
+    ...bien.scenario.attributions.filter((a) => a.tenement !== ligne.tenement),
+    ...[...fusion].map(([signature, { acquereur }]) => ({ tenement: ligne.tenement, signature, acquereur })),
+  ]
+  bien.scenario.ajuste = true
+}
+
+export function reattribuer(bien: Bien, tenement: string, signature: string, acquereur: string): void {
+  bien.scenario.attributions = [
+    ...bien.scenario.attributions.filter((a) => a.tenement !== tenement || a.signature !== signature),
+    { tenement, signature, acquereur },
+  ]
+  bien.scenario.ajuste = true
 }

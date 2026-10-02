@@ -143,3 +143,44 @@ export function axeLong(polygones: PolygonesL93): number {
 
   return angle
 }
+
+function segmentsSeCoupent(a: Position, b: Position, c: Position, d: Position): boolean {
+  const orient = (p: Position, q: Position, r: Position) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]))
+  return orient(a, b, c) !== orient(a, b, d) && orient(c, d, a) !== orient(c, d, b)
+}
+
+function pointDans(p: Position, polygones: PolygonesL93): boolean {
+  return polygones.some((anneaux) => {
+    let dedans = false
+    for (const anneau of anneaux) {
+      for (let i = 0, j = anneau.length - 1; i < anneau.length; j = i++) {
+        const [xi, yi] = anneau[i]
+        const [xj, yj] = anneau[j]
+        if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) {
+          dedans = !dedans
+        }
+      }
+    }
+    return dedans
+  })
+}
+
+// Vrai si la ligne brisée touche les polygones (croise un bord ou a un point à l'intérieur)
+export function ligneTouche(points: Position[], polygones: PolygonesL93): boolean {
+  if (points.some((p) => pointDans(p, polygones))) {
+    return true
+  }
+
+  const bords = polygones.flat()
+  for (let i = 0; i < points.length - 1; i++) {
+    for (const anneau of bords) {
+      for (let k = 0; k < anneau.length - 1; k++) {
+        if (segmentsSeCoupent(points[i], points[i + 1], anneau[k], anneau[k + 1])) {
+          return true
+        }
+      }
+    }
+  }
+
+  return false
+}

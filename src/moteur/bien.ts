@@ -56,6 +56,8 @@ export interface Scenario {
   ordre: string[]
   lignes: LigneCoupe[]
   attributions: Attribution[]
+  // Vrai si les lignes ou les attributions ont été modifiées à la main depuis le dernier Découpage automatique
+  ajuste: boolean
 }
 
 export interface Bien {
@@ -104,6 +106,7 @@ export function creerBien(): Bien {
       ordre: [],
       lignes: [],
       attributions: [],
+      ajuste: false,
     },
   }
 }
