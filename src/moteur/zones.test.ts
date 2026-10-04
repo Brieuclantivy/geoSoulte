@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'vitest'
 import type { Position } from 'geojson'
-import { ajouterAcquereur, ajouterParcelle, creerBien, fixerObjectif, scenarioCourant, type Bien } from './bien'
+import {
+  ajouterAcquereur,
+  ajouterParcelle,
+  creerBien,
+  fixerObjectif,
+  scenarioCourant,
+  type Bien,
+  type LigneCoupe,
+} from './bien'
 import {
   ajouterLigne,
   bilanScenario,
@@ -12,6 +20,7 @@ import {
 } from './decoupage'
 import { exporter, importer } from './export'
 import { rectangle } from './fixtures'
+import { aire, versL93 } from './geo'
 
 const HA = 10000
 
@@ -38,7 +47,9 @@ const surfacesDe = (bien: Bien, id: string) =>
     .map((l) => l.surfaceMesuree)
     .sort((a, b) => a - b)
 const toutAttribue = (bien: Bien) => bilanScenario(bien).lots.every((l) => l.acquereur !== null)
-const lotsSansGeometrie = (bien: Bien) => bilanScenario(bien).lots.map(({ geometrie, ...l }) => (void geometrie, l))
+// Surface (m²) entourée par une zone
+const aireDeZone = (l: LigneCoupe) => aire(versL93({ type: 'Polygon', coordinates: [[...l.points, l.points[0]]] }))
+const lotsSansGeometrie =(bien: Bien) => bilanScenario(bien).lots.map(({ geometrie, ...l }) => (void geometrie, l))
 
 describe('Lignes de coupe en brouillon', () => {
   test('une ligne dont une extrémité est dans le Tènement est acceptée en brouillon, sans rien couper', () => {
@@ -138,6 +149,46 @@ describe('Zones fermées', () => {
     expect(surfacesDe(bien, ids.Paul)).toHaveLength(2)
     expect(surfacesDe(bien, ids.Marie)).toHaveLength(2)
     expect(toutAttribue(bien)).toBe(true)
+  })
+
+  test('une zone qui déborde du Tènement est recadrée sur ses limites', () => {
+    const bien = creerBien()
+    // Tènement en L : 50 ha + 6 ha posés sur sa partie ouest
+    ajouterParcelle(bien, rectangle('A', 0, 0, 1000, 500))
+    ajouterParcelle(bien, rectangle('B', 0, 500, 300, 200))
+
+    expect(ajouterLigne(bien, [pt(-100, -100), pt(500, -100), pt(500, 800), pt(-100, 800)], true)).toBe(true)
+
+    expect(scenarioCourant(bien).lignes.map(aireDeZone)).toEqual([expect.closeTo(310000, 0)])
+    expect(bilanScenario(bien).lots.map((l) => l.surfaceMesuree).sort((a, b) => a - b)).toEqual([
+      expect.closeTo(250000, 0),
+      expect.closeTo(310000, 0),
+    ])
+  })
+
+  test('une zone à cheval sur deux Tènements est recadrée sur chacun', () => {
+    const bien = creerBien()
+    ajouterParcelle(bien, rectangle('A', 0, 0, 100, 100))
+    ajouterParcelle(bien, rectangle('C', 300, 0, 100, 100))
+
+    expect(ajouterLigne(bien, [pt(-50, -50), pt(450, -50), pt(450, 50), pt(-50, 50)], true)).toBe(true)
+
+    const lignes = scenarioCourant(bien).lignes
+    expect(new Set(lignes.map((l) => l.tenement)).size).toBe(2)
+    expect(lignes.map(aireDeZone)).toEqual([expect.closeTo(5000, 0), expect.closeTo(5000, 0)])
+  })
+
+  test('une zone qui traverse deux bras d’un Tènement y devient une zone par morceau', () => {
+    const bien = creerBien()
+    // Tènement en U
+    ajouterParcelle(bien, rectangle('A', 0, 0, 100, 300))
+    ajouterParcelle(bien, rectangle('B', 100, 0, 200, 100))
+    ajouterParcelle(bien, rectangle('C', 300, 0, 100, 300))
+
+    expect(ajouterLigne(bien, [pt(-50, 200), pt(450, 200), pt(450, 250), pt(-50, 250)], true)).toBe(true)
+
+    expect(scenarioCourant(bien).lignes.map(aireDeZone)).toEqual([expect.closeTo(5000, 0), expect.closeTo(5000, 0)])
+    expect(bilanScenario(bien).lots).toHaveLength(3)
   })
 
   test('une zone hors du Bien est refusée', () => {

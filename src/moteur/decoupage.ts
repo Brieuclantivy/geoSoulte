@@ -477,9 +477,20 @@ export function fermerLigne(bien: Bien, index: number): boolean {
   return remplacerLigne(bien, index, { ...ligne, fermee: true })
 }
 
+// Contours (WGS84, sans point de fermeture) des morceaux d'une zone (anneau fermé en Lambert 93) situés dans le
+// Tènement : là où elle déborde, la zone suit ainsi ses limites. Les trous éventuels (enclave hors du Bien) sont
+// ignorés : la zone n'agit que sur les Parcelles.
+function recadrerZone(anneau: Position[], parcelles: Parcelle[]): Position[][] {
+  const tenement = union(...(parcelles.map((p) => enGeom(versL93(p.geometrie))) as [Geom, ...Geom[]]))
+  return (intersection(tenement, enGeom([[anneau]])) as PolygonesL93).map(([exterieur]) =>
+    exterieur.slice(0, -1).map(pointVersWgs84),
+  )
+}
+
 // Ajoute une ligne de coupe (WGS84), ouverte ou fermée, à chaque Tènement que son tracé touche et découpe ;
 // les deux Lots issus d'un Lot gardent son Acquéreur. Une ligne ouverte dont une extrémité est dans le Tènement
-// y est ajoutée en brouillon. Refusée (false) si elle n'est ni un brouillon ni ne découpe un Lot.
+// y est ajoutée en brouillon. Une ligne fermée est recadrée sur chaque Tènement, en une zone par morceau.
+// Refusée (false) si elle n'est ni un brouillon ni ne découpe un Lot.
 export function ajouterLigne(bien: Bien, points: Position[], fermee = false): boolean {
   const trace = (fermee ? [...points, points[0]] : points).map(pointVersL93)
   let acceptee = false
@@ -488,19 +499,21 @@ export function ajouterLigne(bien: Bien, points: Position[], fermee = false): bo
       continue
     }
 
-    const ligne: LigneCoupe = fermee ? { tenement: cle, points, fermee } : { tenement: cle, points }
-    const lignes = scenarioCourant(bien).lignes.filter((l) => l.tenement === cle)
-    const brouillon = estBrouillon(ligne, parcelles)
-    if (!brouillon && signaturesDesLots(parcelles, [...lignes, ligne]).size === signaturesDesLots(parcelles, lignes).size) {
-      continue
-    }
+    for (const morceau of fermee ? recadrerZone(trace, parcelles) : [points]) {
+      const ligne: LigneCoupe = fermee ? { tenement: cle, points: morceau, fermee } : { tenement: cle, points: morceau }
+      const lignes = scenarioCourant(bien).lignes.filter((l) => l.tenement === cle)
+      const brouillon = estBrouillon(ligne, parcelles)
+      if (!brouillon && signaturesDesLots(parcelles, [...lignes, ligne]).size === signaturesDesLots(parcelles, lignes).size) {
+        continue
+      }
 
-    acceptee = true
-    scenarioCourant(bien).lignes.push(ligne)
-    const cotes = brouillon ? ['D'] : ['G', 'D']
-    scenarioCourant(bien).attributions = scenarioCourant(bien).attributions.flatMap((a) =>
-      a.tenement === cle ? cotes.map((c) => ({ ...a, signature: a.signature + c })) : [a],
-    )
+      acceptee = true
+      scenarioCourant(bien).lignes.push(ligne)
+      const cotes = brouillon ? ['D'] : ['G', 'D']
+      scenarioCourant(bien).attributions = scenarioCourant(bien).attributions.flatMap((a) =>
+        a.tenement === cle ? cotes.map((c) => ({ ...a, signature: a.signature + c })) : [a],
+      )
+    }
   }
 
   // Sans Découpage automatique, la première ligne entame un Découpage à la main : ses Lots sont à attribuer
