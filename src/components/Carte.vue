@@ -271,11 +271,72 @@ function basculerTrace(mode: keyof typeof traces | null) {
   }
 
   enTrace.value = enTrace.value === mode ? null : mode
+  traceCommence = false
   if (enTrace.value) {
     carte.addInteraction(traces[enTrace.value])
   }
 
   placerAimant()
+}
+
+// Défilement au bord : une fois le premier sommet posé, la carte défile quand la souris approche d'un bord, plus
+// vite à mesure qu'elle s'en rapproche. Le tracé en cours est ensuite remis sous la souris.
+const BORD = 40
+const VITESSE = 15
+let traceCommence = false
+let pointeur: PointerEvent | null = null
+let defilement = 0
+Object.values(traces).forEach((t) => {
+  t.on('drawstart', () => (traceCommence = true))
+  t.on(['drawend', 'drawabort'], () => (traceCommence = false))
+})
+
+function suivrePointeur(e: PointerEvent) {
+  // Ignore le mouvement réémis par defiler
+  if (!e.isTrusted) {
+    return
+  }
+
+  pointeur = e.pointerType === 'mouse' ? e : null
+  if (!defilement) {
+    defiler()
+  }
+}
+
+// Pousse (en px) vers un bord, nulle loin des bords
+function poussee(position: number, taille: number) {
+  if (position < BORD) {
+    return (-VITESSE * (BORD - position)) / BORD
+  }
+
+  if (position > taille - BORD) {
+    return (VITESSE * (position - taille + BORD)) / BORD
+  }
+
+  return 0
+}
+
+function defiler() {
+  defilement = 0
+  if (!traceCommence || !pointeur) {
+    return
+  }
+
+  const [x, y] = carte.getEventPixel(pointeur)
+  const [largeur, hauteur] = carte.getSize()!
+  const dx = poussee(x, largeur)
+  const dy = poussee(y, hauteur)
+  if (!dx && !dy) {
+    return
+  }
+
+  const vue = carte.getView()
+  const resolution = vue.getResolution()!
+  const [cx, cy] = vue.getCenter()!
+  vue.setCenter([cx + dx * resolution, cy - dy * resolution])
+  carte.renderSync()
+  carte.getViewport().dispatchEvent(new PointerEvent('pointermove', pointeur))
+  defilement = requestAnimationFrame(defiler)
 }
 
 // Aimant : pendant un tracé ou le déplacement d'un sommet, colle le pointeur aux sommets et bords proches
@@ -512,7 +573,11 @@ onMounted(() => {
     }
   })
   carte.on('pointermove', survoler)
-  fenetre.addEventListener('mouseleave', () => (survol.value = null))
+  fenetre.addEventListener('pointermove', suivrePointeur)
+  fenetre.addEventListener('mouseleave', () => {
+    survol.value = null
+    pointeur = null
+  })
   fenetre.addEventListener('pointerdown', debutAppui)
   fenetre.addEventListener('pointermove', deplacementAppui)
   fenetre.addEventListener('pointerup', annulerAppui)
