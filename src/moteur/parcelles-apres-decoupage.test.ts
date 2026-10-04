@@ -18,7 +18,7 @@ import { bilanScenario, lancerDecoupage } from './decoupage'
 import { exporter, importer } from './export'
 import { rectangle } from './fixtures'
 
-const NON_ATTRIBUE = 'Surface non attribuée : relancez le Découpage'
+const NON_ATTRIBUE = 'Surface non attribuée : attribuez les Lots ou relancez le Découpage'
 
 // Deux Tènements de 20 ha : T1 (Parcelles 'A' et 'B', à l'ouest), découpé entre Paul et Marie,
 // et T2 (Parcelle 'C', à l'est), verrouillé sur Jean

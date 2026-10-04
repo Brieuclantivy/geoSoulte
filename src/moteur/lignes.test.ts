@@ -51,6 +51,23 @@ describe('Ajouter une ligne de coupe', () => {
     expect(bilanScenario(bien).lots.filter((l) => l.tenement === 'B')).toHaveLength(lotsB)
   })
 
+  test('sans Découpage automatique, une ligne découpe le Bien à la main en Lots à attribuer', () => {
+    const bien = creerBien()
+    ajouterParcelle(bien, rectangle('A', 0, 0, 1000, 500))
+    const paul = ajouterAcquereur(bien, 'Paul')
+
+    expect(ajouterLigne(bien, [pt(200, -50), pt(200, 550)])).toBe(true)
+
+    expect(scenarioCourant(bien).decoupe).toBe(true)
+    const lots = bilanScenario(bien).lots
+    expect(lots).toHaveLength(2)
+    expect(lots.every((l) => l.acquereur === null)).toBe(true)
+    expect(bilanScenario(bien).avertissements).toContain('Surface non attribuée : attribuez les Lots ou relancez le Découpage')
+
+    reattribuer(bien, lots[0].tenement, lots[0].signature, paul)
+    expect(bilanScenario(bien).lots.filter((l) => l.acquereur === paul)).toHaveLength(1)
+  })
+
   test('une ligne qui ne traverse pas le Bien est refusée', () => {
     const { bien } = bienDecoupe()
     const lignes = structuredClone(scenarioCourant(bien).lignes)

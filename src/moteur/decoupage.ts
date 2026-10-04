@@ -173,7 +173,7 @@ export function bilanScenario(bien: Bien): BilanScenario {
   const avertissements = [...parts(bien, prix).avertissements]
   // Avant tout Découpage, aucun Lot n'est attribué : rien à signaler
   if (decoupe && lots.some((l) => l.acquereur === null)) {
-    avertissements.push('Surface non attribuée : relancez le Découpage')
+    avertissements.push('Surface non attribuée : attribuez les Lots ou relancez le Découpage')
   }
 
   if (prix.sansPrix.length > 0) {
@@ -503,8 +503,10 @@ export function ajouterLigne(bien: Bien, points: Position[], fermee = false): bo
     )
   }
 
+  // Sans Découpage automatique, la première ligne entame un Découpage à la main : ses Lots sont à attribuer
   if (acceptee) {
     scenarioCourant(bien).ajuste = true
+    scenarioCourant(bien).decoupe = true
   }
 
   return acceptee

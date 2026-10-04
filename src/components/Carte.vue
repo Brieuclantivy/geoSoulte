@@ -371,7 +371,7 @@ defineExpose({ centrerSur })
   <div class="carte">
     <div ref="cible" class="ol"></div>
     <div class="outils">
-      <template v-if="scenarioCourant(bien).lignes.length || scenarioCourant(bien).attributions.length">
+      <template v-if="bien.parcelles.length">
         <button type="button" @click="basculerTrace('ligne')">
           {{ enTrace === 'ligne' ? 'Annuler le tracé' : '✏ Tracer une ligne de coupe' }}
         </button>
