@@ -138,6 +138,25 @@ describe('Parts égales sans Objectif', () => {
     expect(bilan.acquereurs.find((a) => a.id === paul)!.surfaceCadastrale).toBeCloseTo(7.5 * HA, -1)
   })
 
+  test('si des Parcelles n’ont pas de prix, les parts égales se font en Surface cadastrale', () => {
+    const bien = creerBien()
+    // A (10 ha à 10 000 €/ha) à l'ouest, B (10 ha sans prix, Coût nul) à l'est
+    ajouterParcelle(bien, rectangle('A', 0, 0, 500, 200))
+    ajouterParcelle(bien, rectangle('B', 500, 0, 500, 200))
+    fixerPrix(bien, { total: null, parHectareDefaut: null, parHectare: { A: 10000 } })
+    ajouterAcquereur(bien, 'Paul')
+    ajouterAcquereur(bien, 'Marie')
+
+    lancerDecoupage(bien)
+    const bilan = bilanScenario(bien)
+
+    for (const a of bilan.acquereurs) {
+      expect(a.surfaceCadastrale).toBeCloseTo(10 * HA, -1)
+      expect(a.objectif!.unite).toBe('ha')
+      expect(a.objectif!.valeur).toBeCloseTo(10, 6)
+    }
+  })
+
   test('un Objectif en euros ignoré faute de prix compte comme absent : parts égales', () => {
     const bien = creerBien()
     ajouterParcelle(bien, rectangle('A', 0, 0, 1000, 500))

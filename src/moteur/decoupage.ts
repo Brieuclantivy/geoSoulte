@@ -227,8 +227,8 @@ interface Part {
 
 // Part du Bien visée par chaque Acquéreur : Objectif / Contenance du Bien (ha) ou / prix du Bien (€),
 // ramenée au prorata quand la somme ne fait pas 100 %. Sans aucun Objectif retenu, le Bien est partagé à parts
-// égales entre tous les Acquéreurs, en Coût si un prix est saisi, sinon en Surface cadastrale : `partEgale` est
-// alors l'Objectif implicite de chacun.
+// égales entre tous les Acquéreurs, en Coût si toutes les Parcelles ont un prix, sinon en Surface cadastrale (une
+// Parcelle sans prix, de Coût nul, irait en plus à qui la reçoit) : `partEgale` est alors l'Objectif implicite de chacun.
 function parts(
   bien: Bien,
   prix: PrixEffectifs,
@@ -254,7 +254,7 @@ function parts(
   const nbAcquereurs = bien.acquereurs.length
   let partEgale: Objectif | null = null
   if (brutes.length === 0 && nbAcquereurs > 0) {
-    partEgale = prix.prixBien
+    partEgale = prix.prixBien && prix.sansPrix.length === 0
       ? { unite: 'eur', valeur: prix.prixBien / nbAcquereurs }
       : { unite: 'ha', valeur: contenance / 10000 / nbAcquereurs }
     avertissements.push('Aucun Objectif retenu : le Découpage automatique partage le Bien à parts égales')
