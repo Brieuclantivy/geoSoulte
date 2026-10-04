@@ -119,6 +119,20 @@ describe('Attributions verrouillées', () => {
     expect(bilan.acquereurs.find((a) => a.id === ids.Marie)!.surfaceCadastrale).toBeCloseTo(10 * HA, -1)
   })
 
+  test('désattribuer un Lot d’un Tènement verrouillé garde le verrouillage', () => {
+    const bien = deuxTenements(10)
+    const ids = groupe(bien, { Paul: 40, Marie: 10 })
+    verrouiller(bien, 'A', ids.Paul)
+    lancerDecoupage(bien)
+    const verrouillages = structuredClone(scenarioCourant(bien).verrouillages)
+    const lot = lotsDe(bien, ids.Paul).find((l) => l.tenement === 'A')!
+
+    reattribuer(bien, lot.tenement, lot.signature, null)
+
+    expect(bilanScenario(bien).lots.find((l) => l.tenement === 'A')!.acquereur).toBeNull()
+    expect(scenarioCourant(bien).verrouillages).toEqual(verrouillages)
+  })
+
   test('le verrouillage survit à une relance du Découpage, et se retire', () => {
     const bien = deuxTenements(10)
     const ids = groupe(bien, { Paul: 40, Marie: 10 })

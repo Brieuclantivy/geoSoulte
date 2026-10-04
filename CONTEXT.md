@@ -25,7 +25,7 @@ La cible d'un Acquéreur, exprimée au choix en surface (ha) ou en budget (€).
 _Avoid_: quota, part souhaitée
 
 **Lot**:
-Un morceau du Bien issu du Découpage, attribué à exactement un Acquéreur. Un Acquéreur peut avoir plusieurs Lots ; toute la surface du Bien est attribuée, sans partie commune.
+Un morceau du Bien issu du Découpage, attribué à exactement un Acquéreur. Un Acquéreur peut avoir plusieurs Lots ; le Découpage automatique attribue toute la surface du Bien, sans partie commune. Pendant l'ajustement à la main, un Lot peut rester provisoirement « Non attribué » (hachuré, signalé par un avertissement).
 _Avoid_: part, portion, parcelle (un Lot n'est pas une Parcelle cadastrale)
 
 **Lot enclavé**:

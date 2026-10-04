@@ -150,6 +150,18 @@ describe('Annuler / Rétablir', () => {
     }
   })
 
+  test('annuler une désattribution rend le Lot à son Acquéreur', () => {
+    const bien = bienDecoupe()
+    const historique = creerHistorique(bien)
+    const { tenement, signature, acquereur } = bilanScenario(bien).lots[0]
+    action(historique, bien, () => reattribuer(bien, tenement, signature, null))
+    expect(bilanScenario(bien).lots[0].acquereur).toBeNull()
+
+    restaurer(historique, bien, annuler(historique))
+
+    expect(bilanScenario(bien).lots[0].acquereur).toBe(acquereur)
+  })
+
   test('restaurer un état ne crée pas d’étape', () => {
     const bien = bienDecoupe()
     const historique = creerHistorique(bien)

@@ -637,10 +637,11 @@ export function supprimerLigne(bien: Bien, index: number): void {
   scenarioCourant(bien).ajuste = true
 }
 
-export function reattribuer(bien: Bien, tenement: string, signature: string, acquereur: string): void {
+// acquereur null : le Lot redevient non attribué (le verrouillage du Tènement reste)
+export function reattribuer(bien: Bien, tenement: string, signature: string, acquereur: string | null): void {
   scenarioCourant(bien).attributions = [
     ...scenarioCourant(bien).attributions.filter((a) => a.tenement !== tenement || a.signature !== signature),
-    { tenement, signature, acquereur },
+    ...(acquereur ? [{ tenement, signature, acquereur }] : []),
   ]
   scenarioCourant(bien).ajuste = true
 }

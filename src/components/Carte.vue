@@ -162,7 +162,13 @@ watch(
       const feature = geojson.readFeature({
         type: 'Feature',
         geometry: lot.geometrie,
-        properties: { couleur, tenement: lot.tenement, signature: lot.signature, sansAcces: lot.sansAcces },
+        properties: {
+          couleur,
+          tenement: lot.tenement,
+          signature: lot.signature,
+          attribue: lot.acquereur !== null,
+          sansAcces: lot.sansAcces,
+        },
       })
       if (!Array.isArray(feature)) {
         sourceLots.addFeature(feature)
@@ -492,10 +498,19 @@ function survoler(e: MapBrowserEvent) {
 }
 
 // Menu ouvert par un clic droit (ou un appui long au doigt), selon ce qui est dessous : une ligne de coupe
-// (suppression), un Lot (réattribution, retrait de la Parcelle), une Parcelle du Bien avant tout Découpage
+// (suppression), un Lot (réattribution, désattribution, retrait de la Parcelle), une Parcelle du Bien avant tout Découpage
 // (retrait), ou un point hors du Bien (ajout de la Parcelle). Un clic gauche ou Échap le ferme.
 const menu = ref<
-  | { x: number; y: number; type: 'lot'; tenement: string; signature: string; parcelle: string | null; infos: Info[] }
+  | {
+      x: number
+      y: number
+      type: 'lot'
+      tenement: string
+      signature: string
+      attribue: boolean
+      parcelle: string | null
+      infos: Info[]
+    }
   | { x: number; y: number; type: 'parcelle'; parcelle: string; infos: Info[] }
   | { x: number; y: number; type: 'dehors'; lon: number; lat: number }
   // sommet : indice du sommet sous le pointeur, s'il peut être supprimé
@@ -531,7 +546,16 @@ function ouvrirMenu(pixel: number[]) {
   const id = parcelle ? String(parcelle.getId()) : null
   const lot = sourceLots.getFeaturesAtCoordinate(coordonnee)[0]
   if (lot) {
-    menu.value = { x, y, type: 'lot', tenement: lot.get('tenement'), signature: lot.get('signature'), parcelle: id, infos }
+    menu.value = {
+      x,
+      y,
+      type: 'lot',
+      tenement: lot.get('tenement'),
+      signature: lot.get('signature'),
+      attribue: lot.get('attribue'),
+      parcelle: id,
+      infos,
+    }
   } else if (id) {
     menu.value = { x, y, type: 'parcelle', parcelle: id, infos }
   } else {
@@ -577,7 +601,7 @@ function deplacementAppui(e: PointerEvent) {
   }
 }
 
-function choisirAcquereur(acquereur: string) {
+function choisirAcquereur(acquereur: string | null) {
   if (menu.value?.type === 'lot') {
     reattribuer(props.bien, menu.value.tenement, menu.value.signature, acquereur)
   }
@@ -764,6 +788,9 @@ defineExpose({ centrerSur })
         <button v-for="a in bien.acquereurs" :key="a.id" type="button" @click="choisirAcquereur(a.id)">
           <span class="pastille" :style="{ background: a.couleur }"></span> {{ a.nom }}
         </button>
+        <button v-if="menu.attribue" type="button" @click="choisirAcquereur(null)">
+          <span class="pastille non-attribue"></span> Non attribué
+        </button>
         <button v-if="menu.parcelle" type="button" class="retrait" @click="retirerLaParcelle">
           Retirer la Parcelle {{ menu.parcelle }} du Bien
         </button>
@@ -889,6 +916,11 @@ defineExpose({ centrerSur })
 }
 .menu button:hover {
   background: var(--fond-doux);
+}
+/* Comme les hachures des Lots sans Acquéreur */
+.menu .non-attribue {
+  border: 1px solid #666;
+  background: repeating-linear-gradient(-45deg, #666 0 1px, transparent 1px 3px);
 }
 .menu .retrait {
   margin-top: 4px;

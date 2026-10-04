@@ -108,6 +108,23 @@ describe('Réattribuer un Lot', () => {
     expect(bilanDe(bien, ids.Paul).surfaceCadastrale).toBeCloseTo(20 * HA, -1)
     expect(bilanDe(bien, ids.Marie).surfaceCadastrale).toBeCloseTo(30 * HA, -1)
   })
+
+  test('un Lot désattribué redevient non attribué, sans toucher aux autres Lots', () => {
+    const { bien, ids } = bienDecoupe()
+    ajouterLigne(bien, [pt(800, -10), pt(800, 510)])
+    const lots = bilanScenario(bien).lots
+    const lotEst = lots.find((l) => l.acquereur === ids.Marie && l.surfaceMesuree < 11 * HA)!
+
+    reattribuer(bien, lotEst.tenement, lotEst.signature, null)
+
+    const apres = bilanScenario(bien)
+    expect(apres.lots).toEqual(
+      lots.map((l) => (l.signature === lotEst.signature ? { ...l, acquereur: null } : l)),
+    )
+    expect(apres.avertissements).toContain('Surface non attribuée : attribuez les Lots ou relancez le Découpage')
+    expect(scenarioCourant(bien).attributions.some((a) => a.signature === lotEst.signature)).toBe(false)
+    expect(scenarioCourant(bien).ajuste).toBe(true)
+  })
 })
 
 describe('Supprimer une ligne de coupe', () => {
