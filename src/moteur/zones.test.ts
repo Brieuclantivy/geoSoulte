@@ -191,6 +191,26 @@ describe('Zones fermées', () => {
     expect(bilanScenario(bien).lots).toHaveLength(3)
   })
 
+  test('une zone qui déborde sur une zone existante est recadrée sur ses limites', () => {
+    const { bien } = bienDecoupe()
+    ajouterLigne(bien, [pt(400, 100), pt(600, 100), pt(600, 300), pt(400, 300)], true)
+    const lots = bilanScenario(bien).lots.length
+
+    expect(ajouterLigne(bien, [pt(500, 150), pt(800, 150), pt(800, 250), pt(500, 250)], true)).toBe(true)
+
+    expect(aireDeZone(scenarioCourant(bien).lignes[2])).toBeCloseTo(20000, 0)
+    expect(bilanScenario(bien).lots).toHaveLength(lots + 1)
+  })
+
+  test('une zone tracée à l’intérieur d’une zone existante est gardée telle quelle', () => {
+    const { bien } = bienDecoupe()
+    ajouterLigne(bien, [pt(400, 100), pt(600, 100), pt(600, 300), pt(400, 300)], true)
+
+    expect(ajouterLigne(bien, [pt(450, 150), pt(550, 150), pt(550, 250), pt(450, 250)], true)).toBe(true)
+
+    expect(aireDeZone(scenarioCourant(bien).lignes[2])).toBeCloseTo(10000, 0)
+  })
+
   test('une zone hors du Bien est refusée', () => {
     const { bien } = bienDecoupe()
 

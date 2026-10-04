@@ -123,7 +123,8 @@ function morceaux(parcelles: Parcelle[], lignes: LigneCoupe[], prix: PrixEffecti
       [
         { ...m, signature: m.signature + 'G', geometrie: intersection(enGeom(m.geometrie), enGeom(cote)) },
         { ...m, signature: m.signature + 'D', geometrie: difference(enGeom(m.geometrie), enGeom(cote)) },
-      ].filter((n) => n.geometrie.length > 0),
+        // Les éclats de moins d'1 dm² dus aux arrondis (ligne posée sur une limite) sont ignorés
+      ].filter((n) => aire(n.geometrie) >= 0.01),
     )
   }
 
@@ -398,13 +399,9 @@ export function lancerDecoupage(bien: Bien): void {
   }
 }
 
-// Signatures des Lots non vides d'un Tènement (les éclats de moins d'1 dm² dus aux arrondis sont ignorés)
+// Signatures des Lots non vides d'un Tènement
 function signaturesDesLots(parcelles: Parcelle[], lignes: LigneCoupe[]): Set<string> {
-  return new Set(
-    morceaux(parcelles, lignes, SANS_PRIX)
-      .filter((m) => aire(m.geometrie) >= 0.01)
-      .map((m) => m.signature),
-  )
+  return new Set(morceaux(parcelles, lignes, SANS_PRIX).map((m) => m.signature))
 }
 
 // Une ligne ouverte dont une extrémité est à l'intérieur d'une Parcelle du Tènement est un brouillon : elle ne
@@ -478,11 +475,14 @@ export function fermerLigne(bien: Bien, index: number): boolean {
 }
 
 // Contours (WGS84, sans point de fermeture) des morceaux d'une zone (anneau fermé en Lambert 93) situés dans le
-// Tènement : là où elle déborde, la zone suit ainsi ses limites. Les trous éventuels (enclave hors du Bien) sont
-// ignorés : la zone n'agit que sur les Parcelles.
-function recadrerZone(anneau: Position[], parcelles: Parcelle[]): Position[][] {
+// Tènement et hors de ses zones existantes : là où elle déborde, la zone suit ainsi leurs limites. Une zone tracée
+// à l'intérieur des zones existantes n'est recadrée que sur le Tènement. Les trous éventuels (enclave hors du Bien,
+// zone existante entourée) sont ignorés : la zone n'agit que sur les Parcelles, et entoure alors la zone existante.
+function recadrerZone(anneau: Position[], parcelles: Parcelle[], zones: LigneCoupe[]): Position[][] {
   const tenement = union(...(parcelles.map((p) => enGeom(versL93(p.geometrie))) as [Geom, ...Geom[]]))
-  return (intersection(tenement, enGeom([[anneau]])) as PolygonesL93).map(([exterieur]) =>
+  const dedans = intersection(tenement, enGeom([[anneau]]))
+  const libre = difference(dedans, ...zones.map((z) => enGeom(cote(z, parcelles, 0))))
+  return ((libre.length > 0 ? libre : dedans) as PolygonesL93).map(([exterieur]) =>
     exterieur.slice(0, -1).map(pointVersWgs84),
   )
 }
@@ -499,7 +499,8 @@ export function ajouterLigne(bien: Bien, points: Position[], fermee = false): bo
       continue
     }
 
-    for (const morceau of fermee ? recadrerZone(trace, parcelles) : [points]) {
+    const zones = scenarioCourant(bien).lignes.filter((l) => l.tenement === cle && l.fermee)
+    for (const morceau of fermee ? recadrerZone(trace, parcelles, zones) : [points]) {
       const ligne: LigneCoupe = fermee ? { tenement: cle, points: morceau, fermee } : { tenement: cle, points: morceau }
       const lignes = scenarioCourant(bien).lignes.filter((l) => l.tenement === cle)
       const brouillon = estBrouillon(ligne, parcelles)
