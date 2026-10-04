@@ -12,6 +12,7 @@ import LineString from 'ol/geom/LineString'
 import Polygon from 'ol/geom/Polygon'
 import Modify from 'ol/interaction/Modify'
 import Draw from 'ol/interaction/Draw'
+import Snap from 'ol/interaction/Snap'
 import { Circle, Fill, Stroke, Style } from 'ol/style'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { fixerOrientation, scenarioCourant, type Bien, type BilanBien } from '../moteur/bien'
@@ -225,7 +226,22 @@ function basculerTrace(mode: keyof typeof traces | null) {
   if (enTrace.value) {
     carte.addInteraction(traces[enTrace.value])
   }
+
+  placerAimant()
 }
+
+// Aimant : pendant un tracé ou le déplacement d'un sommet, colle le pointeur aux sommets et bords proches (10 px)
+// des lignes de coupe et des Parcelles du Bien
+const aimant = ref(true)
+const accroches = [new Snap({ source: sourceLignes }), new Snap({ source: sourceBien })]
+// Les accroches doivent être ajoutées après les interactions de tracé et de modification pour agir avant elles
+function placerAimant() {
+  accroches.forEach((a) => carte.removeInteraction(a))
+  if (aimant.value) {
+    accroches.forEach((a) => carte.addInteraction(a))
+  }
+}
+watch(aimant, placerAimant)
 
 function touche(e: KeyboardEvent) {
   if (e.key === 'Escape' && enTrace.value) {
@@ -283,6 +299,7 @@ onMounted(() => {
     view: new View({ center: fromLonLat([2.5, 46.6]), zoom: 6 }),
   })
   carte.addInteraction(modification)
+  placerAimant()
   window.addEventListener('keydown', touche)
   impression.addEventListener('change', changementImpression)
   carte.on('movestart', () => (menu.value = null))
@@ -361,6 +378,7 @@ defineExpose({ centrerSur })
         <button type="button" @click="basculerTrace('zone')">
           {{ enTrace === 'zone' ? 'Annuler le tracé' : '⬠ Tracer une zone' }}
         </button>
+        <label class="aimant"><input v-model="aimant" type="checkbox" /> 🧲 Aimant</label>
       </template>
       <span v-if="enTrace === 'ligne'" class="aide">Clic pour chaque sommet, double-clic pour finir</span>
       <span v-if="enTrace === 'zone'" class="aide">Clic pour chaque sommet, clic sur le premier point ou double-clic pour fermer</span>
@@ -419,11 +437,21 @@ defineExpose({ centrerSur })
   background: white;
   box-shadow: var(--ombre);
 }
-.outils .aide {
+.outils .aide,
+.outils .aimant {
   background: white;
   padding: 4px 8px;
   border-radius: var(--rayon);
   box-shadow: var(--ombre);
+}
+.outils .aimant {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.outils .aimant input {
+  margin: 0;
 }
 .menu {
   position: absolute;
