@@ -21,7 +21,7 @@ Une personne du groupe qui achète une partie du Bien.
 _Avoid_: participant, héritier, propriétaire
 
 **Objectif**:
-La cible d'un Acquéreur, exprimée au choix en surface (ha) ou en budget (€).
+La cible d'un Acquéreur, exprimée au choix en surface (ha) ou en budget (€). Facultatif : si aucun Acquéreur n'en a, le Découpage automatique partage le Bien à parts égales (en Coût si un prix est saisi, sinon en Surface cadastrale), et cette part égale tient lieu d'Objectif dans le bilan.
 _Avoid_: quota, part souhaitée
 
 **Lot**:

@@ -167,11 +167,12 @@ export function bilanScenario(bien: Bien, voies: Troncon[] | null = null): Bilan
   const enclaves = lotsEnclaves(decoupes, voies)
   const lots: BilanLot[] = decoupes.map((l) => ({ ...l, sansAcces: enclaves.includes(l) }))
 
+  const { avertissements: avertissementsParts, partEgale } = parts(bien, prix)
   const acquereurs = bien.acquereurs.map(({ id }) => {
     const siens = lots.filter((l) => l.acquereur === id)
     const surfaceCadastrale = siens.reduce((t, l) => t + l.surfaceCadastrale, 0)
     const cout = avecPrix ? siens.reduce((t, l) => t + l.cout!, 0) : null
-    const objectif = objectifs[id] ?? null
+    const objectif = partEgale ?? objectifs[id] ?? null
     let ecart: number | null = null
     if (objectif?.unite === 'ha') {
       ecart = surfaceCadastrale - objectif.valeur * 10000
@@ -182,7 +183,7 @@ export function bilanScenario(bien: Bien, voies: Troncon[] | null = null): Bilan
     return { id, surfaceMesuree: siens.reduce((t, l) => t + l.surfaceMesuree, 0), surfaceCadastrale, cout, objectif, ecart }
   })
 
-  const avertissements = [...parts(bien, prix).avertissements]
+  const avertissements = [...avertissementsParts]
   // Avant tout Découpage, aucun Lot n'est attribué : rien à signaler
   if (decoupe && lots.some((l) => l.acquereur === null)) {
     avertissements.push('Surface non attribuée : attribuez les Lots ou relancez le Découpage')
@@ -225,8 +226,13 @@ interface Part {
 }
 
 // Part du Bien visée par chaque Acquéreur : Objectif / Contenance du Bien (ha) ou / prix du Bien (€),
-// ramenée au prorata quand la somme ne fait pas 100 %
-function parts(bien: Bien, prix: PrixEffectifs): { parts: Part[]; avertissements: string[] } {
+// ramenée au prorata quand la somme ne fait pas 100 %. Sans aucun Objectif retenu, le Bien est partagé à parts
+// égales entre tous les Acquéreurs, en Coût si un prix est saisi, sinon en Surface cadastrale : `partEgale` est
+// alors l'Objectif implicite de chacun.
+function parts(
+  bien: Bien,
+  prix: PrixEffectifs,
+): { parts: Part[]; avertissements: string[]; partEgale: Objectif | null } {
   const contenance = bien.parcelles.reduce((t, p) => t + p.contenance, 0)
   const avertissements: string[] = []
   const brutes: Part[] = []
@@ -245,6 +251,18 @@ function parts(bien: Bien, prix: PrixEffectifs): { parts: Part[]; avertissements
     brutes.push({ id: a.id, unite: objectif.unite, part: objectif.valeur / reference })
   }
 
+  const nbAcquereurs = bien.acquereurs.length
+  let partEgale: Objectif | null = null
+  if (brutes.length === 0 && nbAcquereurs > 0) {
+    partEgale = prix.prixBien
+      ? { unite: 'eur', valeur: prix.prixBien / nbAcquereurs }
+      : { unite: 'ha', valeur: contenance / 10000 / nbAcquereurs }
+    avertissements.push('Aucun Objectif retenu : le Découpage automatique partage le Bien à parts égales')
+    for (const a of acquereursOrdonnes(bien)) {
+      brutes.push({ id: a.id, unite: partEgale.unite, part: 1 / nbAcquereurs })
+    }
+  }
+
   const somme = brutes.reduce((t, p) => t + p.part, 0)
   if (brutes.length > 0 && Math.abs(somme - 1) > 1e-6) {
     avertissements.push(
@@ -252,7 +270,7 @@ function parts(bien: Bien, prix: PrixEffectifs): { parts: Part[]; avertissements
     )
   }
 
-  return { parts: brutes.map((p) => ({ ...p, part: p.part / somme })), avertissements }
+  return { parts: brutes.map((p) => ({ ...p, part: p.part / somme })), avertissements, partEgale }
 }
 
 interface ParcelleL93 {

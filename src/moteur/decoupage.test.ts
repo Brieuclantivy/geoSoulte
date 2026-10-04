@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'vitest'
-import { ajouterAcquereur, ajouterParcelle, creerBien, fixerObjectif, renommerAcquereur, supprimerAcquereur, type Bien } from './bien'
+import {
+  ajouterAcquereur,
+  ajouterParcelle,
+  creerBien,
+  fixerObjectif,
+  fixerPrix,
+  renommerAcquereur,
+  supprimerAcquereur,
+  verrouiller,
+  type Bien,
+} from './bien'
 import { bilanScenario, lancerDecoupage } from './decoupage'
 import { rectangle } from './fixtures'
 
@@ -82,6 +92,103 @@ describe('Découpage automatique', () => {
 
     expect(bilan.lots).toHaveLength(1)
     expect(bilan.lots[0].acquereur).toBeNull()
+  })
+})
+
+describe('Parts égales sans Objectif', () => {
+  const PARTS_EGALES = 'Aucun Objectif retenu : le Découpage automatique partage le Bien à parts égales'
+
+  test('sans Objectif ni prix, chacun reçoit un tiers de la Surface cadastrale, affiché comme Objectif', () => {
+    const bien = creerBien()
+    ajouterParcelle(bien, rectangle('A', 0, 0, 1000, 600))
+    const ids = ['Paul', 'Marie', 'Jean'].map((nom) => ajouterAcquereur(bien, nom))
+
+    lancerDecoupage(bien)
+    const bilan = bilanScenario(bien)
+
+    for (const a of bilan.acquereurs) {
+      expect(a.surfaceCadastrale).toBeCloseTo(20 * HA, -1)
+      expect(a.objectif!.unite).toBe('ha')
+      expect(a.objectif!.valeur).toBeCloseTo(20, 6)
+      expect(a.ecart).toBeCloseTo(0, -1)
+    }
+    expect(bilan.acquereurs.map((a) => a.id)).toEqual(ids)
+    expect(bilan.avertissements).toContain(PARTS_EGALES)
+  })
+
+  test('avec un prix saisi, chacun reçoit la moitié du Coût du Bien', () => {
+    const bien = creerBien()
+    // A (10 ha à 10 000 €/ha) à l'ouest, B (10 ha à 5 000 €/ha) à l'est : 150 000 € en tout
+    ajouterParcelle(bien, rectangle('A', 0, 0, 500, 200))
+    ajouterParcelle(bien, rectangle('B', 500, 0, 500, 200))
+    fixerPrix(bien, { total: null, parHectareDefaut: 5000, parHectare: { A: 10000 } })
+    const paul = ajouterAcquereur(bien, 'Paul')
+    ajouterAcquereur(bien, 'Marie')
+
+    lancerDecoupage(bien)
+    const bilan = bilanScenario(bien)
+
+    for (const a of bilan.acquereurs) {
+      expect(a.cout).toBeCloseTo(75000, -1)
+      expect(a.objectif!.unite).toBe('eur')
+      expect(a.objectif!.valeur).toBeCloseTo(75000, 2)
+      expect(a.ecart).toBeCloseTo(0, -1)
+    }
+    // 7,5 ha de A pour Paul, le reste (12,5 ha) pour Marie
+    expect(bilan.acquereurs.find((a) => a.id === paul)!.surfaceCadastrale).toBeCloseTo(7.5 * HA, -1)
+  })
+
+  test('un Objectif en euros ignoré faute de prix compte comme absent : parts égales', () => {
+    const bien = creerBien()
+    ajouterParcelle(bien, rectangle('A', 0, 0, 1000, 500))
+    const paul = ajouterAcquereur(bien, 'Paul')
+    ajouterAcquereur(bien, 'Marie')
+    fixerObjectif(bien, paul, { unite: 'eur', valeur: 100000 })
+
+    lancerDecoupage(bien)
+    const bilan = bilanScenario(bien)
+
+    for (const a of bilan.acquereurs) {
+      expect(a.surfaceCadastrale).toBeCloseTo(25 * HA, -1)
+      expect(a.objectif!.unite).toBe('ha')
+      expect(a.objectif!.valeur).toBeCloseTo(25, 6)
+    }
+    expect(bilan.avertissements).toContain(PARTS_EGALES)
+    expect(bilan.avertissements).toContain("L'Objectif en euros de Paul est ignoré : aucun prix n'est saisi")
+  })
+
+  test('si un seul Acquéreur a un Objectif, ceux qui n’en ont pas restent exclus', () => {
+    const bien = creerBien()
+    ajouterParcelle(bien, rectangle('A', 0, 0, 1000, 500))
+    const ids = groupe(bien, { Paul: 10 })
+    const marie = ajouterAcquereur(bien, 'Marie')
+
+    lancerDecoupage(bien)
+    const bilan = bilanScenario(bien)
+
+    const de = (id: string) => bilan.acquereurs.find((a) => a.id === id)!
+    expect(de(ids.Paul).surfaceCadastrale).toBeCloseTo(50 * HA, -1)
+    expect(de(marie).surfaceCadastrale).toBe(0)
+    expect(de(marie).objectif).toBeNull()
+    expect(bilan.avertissements).not.toContain(PARTS_EGALES)
+  })
+
+  test('un Tènement verrouillé compte dans la part égale de son Acquéreur', () => {
+    const bien = creerBien()
+    // A (10 ha) et B (40 ha), séparés
+    ajouterParcelle(bien, rectangle('A', 0, 0, 500, 200))
+    ajouterParcelle(bien, rectangle('B', 1000, 0, 1000, 400))
+    const paul = ajouterAcquereur(bien, 'Paul')
+    ajouterAcquereur(bien, 'Marie')
+    verrouiller(bien, bilanScenario(bien).lots.find((l) => l.parcelles.includes('A'))!.tenement, paul)
+
+    lancerDecoupage(bien)
+    const bilan = bilanScenario(bien)
+
+    for (const a of bilan.acquereurs) {
+      expect(a.surfaceCadastrale).toBeCloseTo(25 * HA, -1)
+    }
+    expect(bilan.lots.find((l) => l.parcelles.includes('A'))!.acquereur).toBe(paul)
   })
 })
 

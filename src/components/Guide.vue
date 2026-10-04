@@ -30,7 +30,7 @@ const etapes = [
   {
     titre: '3. Ajouter les Acquéreurs',
     texte: [
-      'Dans le panneau « Acquéreurs », ajoutez chaque personne et donnez-lui un Objectif, en hectares ou en euros.',
+      'Dans le panneau « Acquéreurs », ajoutez chaque personne et, si vous le souhaitez, donnez-lui un Objectif, en hectares ou en euros. Sans aucun Objectif, le Bien est partagé à parts égales.',
       'L’ordre de la liste (à changer en glissant ⠿) est l’ordre des bandes ; la boussole de la carte règle leur sens.',
     ],
   },
