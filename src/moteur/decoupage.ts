@@ -23,6 +23,8 @@ export interface BilanLot {
   signature: string
   acquereur: string | null
   geometrie: MultiPolygon
+  // Identifiants des Parcelles que le Lot recouvre
+  parcelles: string[]
   surfaceMesuree: number
   surfaceCadastrale: number
   // Coût en €, ou null si aucun prix n'est saisi
@@ -57,6 +59,7 @@ const SANS_PRIX: PrixEffectifs = { parM2: new Map(), prixBien: null, ecartAvantR
 
 // Morceau d'une Parcelle situé d'un même côté de chaque ligne de coupe
 interface Morceau {
+  parcelle: string
   signature: string
   geometrie: PolygonesL93
   // Contenance par m² mesuré de la Parcelle d'origine
@@ -111,6 +114,7 @@ function morceaux(parcelles: Parcelle[], lignes: LigneCoupe[], prix: PrixEffecti
   const cotes = lignes.map((l) => cote(l, parcelles, portee))
 
   let resultat: Morceau[] = parcelles.map((p, i) => ({
+    parcelle: p.id,
     signature: '',
     geometrie: geometries[i],
     densite: p.contenance / aire(geometries[i]),
@@ -154,6 +158,7 @@ export function bilanScenario(bien: Bien, voies: Troncon[] | null = null): Bilan
       signature,
       acquereur: attributions.find((a) => a.tenement === cle && a.signature === signature)?.acquereur ?? null,
       geometrie: polygonesVersWgs84(union(...(ms.map((m) => enGeom(m.geometrie)) as [Geom, ...Geom[]]))),
+      parcelles: [...new Set(ms.map((m) => m.parcelle))],
       surfaceMesuree: ms.reduce((t, m) => t + aire(m.geometrie), 0),
       surfaceCadastrale: ms.reduce((t, m) => t + aire(m.geometrie) * m.densite, 0),
       cout: avecPrix ? ms.reduce((t, m) => t + aire(m.geometrie) * m.densite * m.prix, 0) : null,
