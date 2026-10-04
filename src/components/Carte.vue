@@ -7,6 +7,7 @@ import VectorLayer from 'ol/layer/Vector'
 import VectorSource from 'ol/source/Vector'
 import XYZ from 'ol/source/XYZ'
 import GeoJSON from 'ol/format/GeoJSON'
+import Collection from 'ol/Collection'
 import Feature from 'ol/Feature'
 import LineString from 'ol/geom/LineString'
 import Polygon from 'ol/geom/Polygon'
@@ -14,6 +15,8 @@ import Modify from 'ol/interaction/Modify'
 import Draw from 'ol/interaction/Draw'
 import Snap from 'ol/interaction/Snap'
 import type MapBrowserEvent from 'ol/MapBrowserEvent'
+import { equals, squaredDistance, squaredDistanceToSegment, type Coordinate } from 'ol/coordinate'
+import { primaryAction } from 'ol/events/condition'
 import { Circle, Fill, Stroke, Style } from 'ol/style'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { fixerOrientation, scenarioCourant, type Bien, type BilanBien } from '../moteur/bien'
@@ -28,6 +31,7 @@ import {
   reattribuer,
   supprimerLigne,
   type BilanScenario,
+  type ModificationLigne,
 } from '../moteur/decoupage'
 
 const props = defineProps<{
@@ -44,8 +48,8 @@ const emit = defineEmits<{
   ajouter: [lon: number, lat: number]
   annuler: []
   retablir: []
-  // Ligne de coupe en cours de modification (final = false pendant le geste, true à la fin)
-  ligne: [index: number, points: number[][], final: boolean]
+  // Lignes de coupe en cours de modification, ensemble (final = false pendant le geste, true à la fin)
+  lignes: [modifications: ModificationLigne[], final: boolean]
   // Retrait d'une Parcelle depuis le menu d'un Lot
   retirer: [idParcelle: string]
 }>()
@@ -177,7 +181,17 @@ const coucheLignes = new VectorLayer({
   source: sourceLignes,
   style: (feature) => (props.scenario.brouillons.includes(feature.get('index')) ? styleBrouillon : styleLigne),
 })
+// Lignes que le geste en cours peut modifier : toutes, sauf aimant désactivé, où seule la ligne saisie l'est
+const modifiables = new Collection<Feature<LineString | Polygon>>()
+function rendreToutesModifiables() {
+  if (modifiables.getLength() !== sourceLignes.getFeatures().length) {
+    modifiables.clear()
+    modifiables.extend(sourceLignes.getFeatures())
+  }
+}
+
 function dessinerLignes() {
+  modifiables.clear()
   sourceLignes.clear()
   scenarioCourant(props.bien).lignes.forEach((l, index) => {
     const points = l.points.map((p) => fromLonLat(p))
@@ -185,6 +199,7 @@ function dessinerLignes() {
     feature.set('index', index)
     sourceLignes.addFeature(feature)
   })
+  rendreToutesModifiables()
 }
 watch(() => scenarioCourant(props.bien).lignes, dessinerLignes, { immediate: true, deep: true })
 watch(() => props.scenario.brouillons, () => coucheLignes.changed())
@@ -208,8 +223,76 @@ watch(
   { immediate: true },
 )
 
+// Tolérance de saisie de Modify (px), sa valeur par défaut
+const SAISIE = 10
+// Écart (unités EPSG:3857, moins d'1 cm au sol) sous lequel un point accroché par l'aimant est confondu avec le
+// sommet ou le bord où il a été accroché, malgré l'aller-retour en WGS84 des points enregistrés
+const JONCTION = 0.01
+
+// Sommets d'une ligne de coupe dessinée ; le point de fermeture d'un polygone est répété
+function anneau(f: Feature<LineString | Polygon>): Coordinate[] {
+  const geometrie = f.getGeometry()!
+  return geometrie instanceof Polygon ? geometrie.getCoordinates()[0] : geometrie.getCoordinates()
+}
+function fixerAnneau(f: Feature<LineString | Polygon>, sommets: Coordinate[]) {
+  const geometrie = f.getGeometry()!
+  if (geometrie instanceof Polygon) {
+    geometrie.setCoordinates([sommets])
+  } else {
+    geometrie.setCoordinates(sommets)
+  }
+}
+
+// À l'appui, avant que Modify ne saisisse le point le plus proche d'une ligne de coupe, comme elle le fait : un
+// sommet à moins de SAISIE px, sinon le point du bord. Aimant activé, ce point est rendu identique dans toutes les
+// lignes qui y passent, un sommet y étant inséré au besoin : Modify les déplace alors toutes ensemble. Aimant
+// désactivé, seule la ligne saisie reste modifiable.
+function preparerSaisie(coordonnee: Coordinate) {
+  rendreToutesModifiables()
+  const saisie = sourceLignes.getClosestFeatureToCoordinate(coordonnee)
+  const resolution = carte.getView().getResolution()!
+  const proche = saisie?.getGeometry()!.getClosestPoint(coordonnee)
+  if (!saisie || !proche || Math.sqrt(squaredDistance(proche, coordonnee)) / resolution > SAISIE) {
+    return
+  }
+
+  if (!aimant.value) {
+    modifiables.clear()
+    modifiables.push(saisie)
+    return
+  }
+
+  const sommet = anneau(saisie).reduce((a, b) => (squaredDistance(a, proche) <= squaredDistance(b, proche) ? a : b))
+  const point = Math.sqrt(squaredDistance(sommet, proche)) / resolution <= SAISIE ? sommet : proche
+  const confondu = (c: Coordinate) => squaredDistance(c, point) < JONCTION ** 2
+  for (const f of sourceLignes.getFeatures()) {
+    const sommets = anneau(f)
+    if (sommets.some(confondu)) {
+      if (sommets.some((c) => confondu(c) && !equals(c, point))) {
+        fixerAnneau(f, sommets.map((c) => (confondu(c) ? point : c)))
+      }
+
+      continue
+    }
+
+    const i = sommets.findIndex((c, k) => k < sommets.length - 1 && squaredDistanceToSegment(point, [c, sommets[k + 1]]) < JONCTION ** 2)
+    if (i >= 0) {
+      fixerAnneau(f, [...sommets.slice(0, i + 1), point, ...sommets.slice(i + 1)])
+    }
+  }
+}
+
 const modification = new Modify({
-  source: sourceLignes,
+  features: modifiables,
+  pixelTolerance: SAISIE,
+  condition: (e) => {
+    const principal = primaryAction(e)
+    if (principal) {
+      preparerSaisie(e.coordinate)
+    }
+
+    return principal
+  },
   style: new Style({ image: new Circle({ radius: 6, fill: new Fill({ color: '#111' }), stroke: new Stroke({ color: 'white', width: 2 }) }) }),
 })
 // Points (WGS84) d'une ligne de coupe dessinée ; le point de fermeture d'un polygone n'est pas répété
@@ -218,15 +301,20 @@ function pointsDe(f: Feature<LineString | Polygon>): number[][] {
   const coordonnees = geometrie instanceof Polygon ? geometrie.getCoordinates()[0].slice(0, -1) : geometrie.getCoordinates()
   return coordonnees.map((c) => toLonLat(c))
 }
-let enCours: Feature<LineString | Polygon> | null = null
+// Nouveaux points des lignes de coupe dessinées
+function modificationsDe(features: Feature<LineString | Polygon>[]): ModificationLigne[] {
+  return features.map((f) => ({ index: f.get('index'), points: pointsDe(f) }))
+}
+// Lignes modifiées par le geste en cours
+let enCours: Feature<LineString | Polygon>[] | null = null
 let image = 0
 modification.on('modifystart', (e) => {
   menu.value = null
-  enCours = e.features.item(0) as Feature<LineString | Polygon>
+  enCours = e.features.getArray() as Feature<LineString | Polygon>[]
 })
 sourceLignes.on('changefeature', (e) => {
   const feature = e.feature as Feature<LineString | Polygon>
-  if (feature !== enCours || image) {
+  if (!enCours?.includes(feature) || image) {
     return
   }
 
@@ -234,14 +322,13 @@ sourceLignes.on('changefeature', (e) => {
   image = requestAnimationFrame(() => {
     image = 0
     if (enCours) {
-      emit('ligne', enCours.get('index'), pointsDe(enCours), false)
+      emit('lignes', modificationsDe(enCours), false)
     }
   })
 })
 modification.on('modifyend', (e) => {
-  const feature = e.features.item(0) as Feature<LineString | Polygon>
   enCours = null
-  emit('ligne', feature.get('index'), pointsDe(feature), true)
+  emit('lignes', modificationsDe(e.features.getArray() as Feature<LineString | Polygon>[]), true)
   // Redessine depuis l'état : une modification refusée revient en place
   dessinerLignes()
 })
@@ -581,6 +668,12 @@ onMounted(() => {
   fenetre.addEventListener('pointerdown', debutAppui)
   fenetre.addEventListener('pointermove', deplacementAppui)
   fenetre.addEventListener('pointerup', annulerAppui)
+  // Un appui sans geste, aimant désactivé, a pu ne laisser modifiable que la ligne saisie
+  fenetre.addEventListener('pointerup', () => {
+    if (!enCours) {
+      rendreToutesModifiables()
+    }
+  })
   fenetre.addEventListener('pointercancel', annulerAppui)
 })
 

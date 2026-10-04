@@ -28,7 +28,7 @@ import {
   type Bien,
   type Scenario,
 } from "./moteur/bien";
-import { bilanScenario, modifierLigne } from "./moteur/decoupage";
+import { bilanScenario, modifierLignes, type ModificationLigne } from "./moteur/decoupage";
 import { empriseVoies, type Troncon } from "./moteur/acces";
 import {
   annuler,
@@ -91,8 +91,8 @@ watch(
   { immediate: true },
 );
 
-// Aperçu d'une ligne de coupe en cours de déplacement (non encore appliqué au Bien)
-const apercu = ref<{ index: number; points: number[][] } | null>(null);
+// Aperçu des lignes de coupe en cours de déplacement (non encore appliqué au Bien)
+const apercu = ref<ModificationLigne[] | null>(null);
 const scenario = computed(() => {
   if (apercu.value) {
     const copie = {
@@ -101,7 +101,7 @@ const scenario = computed(() => {
         s.id === bien.courant ? { ...s } : s,
       ),
     };
-    if (modifierLigne(copie, apercu.value.index, apercu.value.points)) {
+    if (modifierLignes(copie, apercu.value)) {
       return bilanScenario(copie, voies.value);
     }
   }
@@ -109,12 +109,12 @@ const scenario = computed(() => {
   return bilanScenario(bien, voies.value);
 });
 
-function ligne(index: number, points: number[][], final: boolean) {
+function lignes(modifications: ModificationLigne[], final: boolean) {
   if (final) {
     apercu.value = null;
-    modifierLigne(bien, index, points);
+    modifierLignes(bien, modifications);
   } else {
-    apercu.value = { index, points };
+    apercu.value = modifications;
   }
 }
 const carte = ref<InstanceType<typeof Carte>>();
@@ -253,7 +253,7 @@ async function ajouter(lon: number, lat: number) {
         :peut-retablir="peutRetablir(historique)"
         @ajouter="ajouter"
         @annuler="restaurer(annuler(historique))"
-        @ligne="ligne"
+        @lignes="lignes"
         @retablir="restaurer(retablir(historique))"
         @retirer="retirer"
       />

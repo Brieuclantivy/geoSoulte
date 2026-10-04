@@ -443,50 +443,84 @@ function estBrouillon(ligne: LigneCoupe, parcelles: Parcelle[]): boolean {
   )
 }
 
-// Remplace la ligne de coupe d'indice donné. Un brouillon qui se met à couper est accepté : les Lots apparus
-// prennent l'Acquéreur du Lot dont ils sont issus. Sinon, le remplacement est refusé (false) s'il vide ou crée
-// un Lot : chaque Lot garde ainsi son Acquéreur et tout reste attribué.
-function remplacerLigne(bien: Bien, index: number, nouvelle: LigneCoupe): boolean {
-  const ligne = scenarioCourant(bien).lignes[index]
-  const tenement = tenementsDuBien(bien).find((t) => t.cle === ligne?.tenement)
-  if (!tenement || nouvelle.points.length < 2) {
-    return false
-  }
-
-  const etaitBrouillon = estBrouillon(ligne, tenement.parcelles)
-  const estEncoreBrouillon = estBrouillon(nouvelle, tenement.parcelles)
-  // Une ligne qui coupe ne redevient pas un brouillon : ses Lots fusionneraient en silence
-  if (!etaitBrouillon && estEncoreBrouillon) {
-    return false
-  }
-
-  const modifiees = scenarioCourant(bien).lignes.map((l, i) => (i === index ? nouvelle : l))
-  const duTenement = (lignes: LigneCoupe[]) => lignes.filter((l) => l.tenement === ligne.tenement)
-  const avant = signaturesDesLots(tenement.parcelles, duTenement(scenarioCourant(bien).lignes))
-  const apres = signaturesDesLots(tenement.parcelles, duTenement(modifiees))
-  if (etaitBrouillon && !estEncoreBrouillon) {
-    if (apres.size <= avant.size) {
+// Remplace les lignes de coupe d'indices donnés, en bloc : tout ou rien. Un brouillon qui se met à couper est
+// accepté : les Lots apparus prennent l'Acquéreur du Lot dont ils sont issus. Sinon, le remplacement est refusé
+// (false) s'il vide ou crée un Lot : chaque Lot garde ainsi son Acquéreur et tout reste attribué. Les Lots sont
+// comparés une fois toutes les lignes d'un Tènement remplacées : des lignes jointes peuvent bouger ensemble.
+function remplacerLignes(bien: Bien, nouvelles: Map<number, LigneCoupe>): boolean {
+  const lignes = scenarioCourant(bien).lignes
+  const modifiees = lignes.map((l, i) => nouvelles.get(i) ?? l)
+  let attributions = scenarioCourant(bien).attributions
+  for (const cle of new Set([...nouvelles.keys()].map((i) => lignes[i]?.tenement))) {
+    const tenement = tenementsDuBien(bien).find((t) => t.cle === cle)
+    if (!tenement) {
       return false
     }
 
-    // Tous les Lots sont du côté 'D' du brouillon : leur part du côté 'G' prend le même Acquéreur
-    const rang = duTenement(scenarioCourant(bien).lignes).indexOf(ligne)
-    const cote = (signature: string) => signature.slice(0, rang) + 'G' + signature.slice(rang + 1)
-    scenarioCourant(bien).attributions = scenarioCourant(bien).attributions.flatMap((a) =>
-      a.tenement === ligne.tenement ? [a, { ...a, signature: cote(a.signature) }] : [a],
-    )
-  } else if (avant.size !== apres.size || [...avant].some((s) => !apres.has(s))) {
-    return false
+    const duTenement = (l: LigneCoupe[]) => l.filter((ligne) => ligne.tenement === cle)
+    // Rangs, parmi les lignes du Tènement, des brouillons qui se mettent à couper
+    const activees: number[] = []
+    for (const [rang, ligne] of duTenement(lignes).entries()) {
+      const nouvelle = nouvelles.get(lignes.indexOf(ligne))
+      if (!nouvelle) {
+        continue
+      }
+
+      if (nouvelle.points.length < 2) {
+        return false
+      }
+
+      const etaitBrouillon = estBrouillon(ligne, tenement.parcelles)
+      const estEncoreBrouillon = estBrouillon(nouvelle, tenement.parcelles)
+      // Une ligne qui coupe ne redevient pas un brouillon : ses Lots fusionneraient en silence
+      if (!etaitBrouillon && estEncoreBrouillon) {
+        return false
+      }
+
+      if (etaitBrouillon && !estEncoreBrouillon) {
+        activees.push(rang)
+      }
+    }
+
+    const avant = signaturesDesLots(tenement.parcelles, duTenement(lignes))
+    const apres = signaturesDesLots(tenement.parcelles, duTenement(modifiees))
+    if (activees.length) {
+      if (apres.size <= avant.size) {
+        return false
+      }
+
+      // Tous les Lots sont du côté 'D' d'un brouillon : leur part du côté 'G' prend le même Acquéreur
+      for (const rang of activees) {
+        const cote = (signature: string) => signature.slice(0, rang) + 'G' + signature.slice(rang + 1)
+        attributions = attributions.flatMap((a) => (a.tenement === cle ? [a, { ...a, signature: cote(a.signature) }] : [a]))
+      }
+    } else if (avant.size !== apres.size || [...avant].some((s) => !apres.has(s))) {
+      return false
+    }
   }
 
   scenarioCourant(bien).lignes = modifiees
+  scenarioCourant(bien).attributions = attributions
   scenarioCourant(bien).ajuste = true
   return true
 }
 
-// Remplace les points (WGS84) de la ligne de coupe d'indice donné (voir remplacerLigne)
+// Remplace les points (WGS84) de la ligne de coupe d'indice donné (voir remplacerLignes)
 export function modifierLigne(bien: Bien, index: number, points: Position[]): boolean {
-  return remplacerLigne(bien, index, { ...scenarioCourant(bien).lignes[index], points })
+  return modifierLignes(bien, [{ index, points }])
+}
+
+// Nouveaux points (WGS84) de la ligne de coupe d'indice donné
+export interface ModificationLigne {
+  index: number
+  points: Position[]
+}
+
+// Remplace en bloc les points de plusieurs lignes de coupe, par exemple jointes par un sommet commun déplacé :
+// toutes changent, ou aucune (voir remplacerLignes)
+export function modifierLignes(bien: Bien, modifications: ModificationLigne[]): boolean {
+  const lignes = scenarioCourant(bien).lignes
+  return remplacerLignes(bien, new Map(modifications.map(({ index, points }) => [index, { ...lignes[index], points }])))
 }
 
 // Relie les extrémités d'un brouillon : la ligne fermée découpe la zone qu'elle entoure. Refusé (false) pour une
@@ -498,7 +532,7 @@ export function fermerLigne(bien: Bien, index: number): boolean {
     return false
   }
 
-  return remplacerLigne(bien, index, { ...ligne, fermee: true })
+  return remplacerLignes(bien, new Map([[index, { ...ligne, fermee: true }]]))
 }
 
 // Contours (WGS84, sans point de fermeture) des morceaux d'une zone (anneau fermé en Lambert 93) situés dans le
