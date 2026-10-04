@@ -184,3 +184,28 @@ export function ligneTouche(points: Position[], polygones: PolygonesL93): boolea
 
   return false
 }
+
+// Distance (m) entre la ligne brisée et les polygones : 0 si elle les touche, sinon le plus court écart entre
+// un de ses segments et un bord
+export function distanceLigne(points: Position[], polygones: PolygonesL93): number {
+  if (ligneTouche(points, polygones)) {
+    return 0
+  }
+
+  let min = Infinity
+  for (const anneau of polygones.flat()) {
+    for (let k = 0; k < anneau.length - 1; k++) {
+      for (let i = 0; i < points.length - 1; i++) {
+        min = Math.min(
+          min,
+          distancePointSegment(points[i], anneau[k], anneau[k + 1]),
+          distancePointSegment(points[i + 1], anneau[k], anneau[k + 1]),
+          distancePointSegment(anneau[k], points[i], points[i + 1]),
+          distancePointSegment(anneau[k + 1], points[i], points[i + 1]),
+        )
+      }
+    }
+  }
+
+  return min
+}

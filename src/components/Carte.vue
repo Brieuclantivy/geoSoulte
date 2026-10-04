@@ -18,6 +18,7 @@ import { Circle, Fill, Stroke, Style } from 'ol/style'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { fixerOrientation, scenarioCourant, type Bien, type BilanBien } from '../moteur/bien'
 import { prixEffectifs } from '../moteur/prix'
+import { praticable, type Troncon } from '../moteur/acces'
 import { euros, hectares } from '../format'
 import Boussole from './Boussole.vue'
 import {
@@ -33,6 +34,8 @@ const props = defineProps<{
   bien: Bien
   bilan: BilanBien
   scenario: BilanScenario
+  // Tronçons de route autour du Bien, ou null s'ils ne sont pas chargés
+  voies: Troncon[] | null
   peutAnnuler: boolean
   peutRetablir: boolean
 }>()
@@ -122,18 +125,24 @@ function hachures(): CanvasPattern {
   return contexte.createPattern(canvas, 'repeat')!
 }
 const nonAttribue = new Style({ stroke: new Stroke({ color: '#666', width: 2 }), fill: new Fill({ color: hachures() }) })
+const enclave = new Style({ stroke: new Stroke({ color: '#d00', width: 5, lineDash: [8, 6] }) })
 
-// Lots du Découpage, colorés par Acquéreur ; hachurés en gris s'ils n'ont pas d'Acquéreur
+// Lots du Découpage, colorés par Acquéreur ; hachurés en gris s'ils n'ont pas d'Acquéreur ; cernés de pointillés
+// rouges s'ils sont enclavés
 const sourceLots = new VectorSource()
 const coucheLots = new VectorLayer({
   source: sourceLots,
-  style: (feature) =>
-    feature.get('couleur')
-      ? new Style({
-          stroke: new Stroke({ color: 'white', width: 2 }),
-          fill: new Fill({ color: feature.get('couleur') + '99' }),
-        })
-      : nonAttribue,
+  style: (feature) => {
+    if (!feature.get('couleur')) {
+      return nonAttribue
+    }
+
+    const style = new Style({
+      stroke: new Stroke({ color: 'white', width: 2 }),
+      fill: new Fill({ color: feature.get('couleur') + '99' }),
+    })
+    return feature.get('sansAcces') ? [style, enclave] : style
+  },
 })
 watch(
   () => props.scenario,
@@ -149,7 +158,7 @@ watch(
       const feature = geojson.readFeature({
         type: 'Feature',
         geometry: lot.geometrie,
-        properties: { couleur, tenement: lot.tenement, signature: lot.signature },
+        properties: { couleur, tenement: lot.tenement, signature: lot.signature, sansAcces: lot.sansAcces },
       })
       if (!Array.isArray(feature)) {
         sourceLots.addFeature(feature)
@@ -179,6 +188,25 @@ function dessinerLignes() {
 }
 watch(() => scenarioCourant(props.bien).lignes, dessinerLignes, { immediate: true, deep: true })
 watch(() => props.scenario.brouillons, () => coucheLignes.changed())
+
+// Voies praticables prises en compte pour l'accès des Lots, affichées à la demande
+const sourceVoies = new VectorSource()
+const coucheVoies = new VectorLayer({
+  source: sourceVoies,
+  style: new Style({ stroke: new Stroke({ color: '#ffd400', width: 3 }) }),
+})
+const voiesVisibles = ref(false)
+watch(voiesVisibles, (v) => coucheVoies.setVisible(v), { immediate: true })
+watch(
+  () => props.voies,
+  (voies) => {
+    sourceVoies.clear()
+    for (const t of (voies ?? []).filter(praticable)) {
+      sourceVoies.addFeature(new Feature(new LineString(t.points.map((p) => fromLonLat(p)))))
+    }
+  },
+  { immediate: true },
+)
 
 const modification = new Modify({
   source: sourceLignes,
@@ -285,7 +313,11 @@ function infosEn(coordonnee: number[]): Info[] {
   const feature = sourceLots.getFeaturesAtCoordinate(coordonnee)[0]
   const lot = props.scenario.lots.find((l) => l.tenement === feature?.get('tenement') && l.signature === feature?.get('signature'))
   if (lot) {
-    return [['Surface', hectares(lot.surfaceCadastrale)], ...(lot.cout === null ? [] : [['Valeur', euros(lot.cout)] as Info])]
+    return [
+      ['Surface', hectares(lot.surfaceCadastrale)],
+      ...(lot.cout === null ? [] : [['Valeur', euros(lot.cout)] as Info]),
+      ...(lot.sansAcces ? [['Accès', 'Sans accès'] as Info] : []),
+    ]
   }
 
   const id = sourceBien.getFeaturesAtCoordinate(coordonnee)[0]?.getId()
@@ -455,7 +487,7 @@ let carte: OlMap
 onMounted(() => {
   carte = new OlMap({
     target: cible.value,
-    layers: [couches.orthophoto, couches.rpg, couches.cadastre, coucheBien, coucheLots, coucheLignes],
+    layers: [couches.orthophoto, couches.rpg, couches.cadastre, coucheBien, coucheLots, coucheVoies, coucheLignes],
     view: new View({ center: fromLonLat([2.5, 46.6]), zoom: 6 }),
   })
   carte.addInteraction(modification)
@@ -537,7 +569,13 @@ defineExpose({ centrerSur })
         <button type="button" @click="basculerTrace('zone')">
           {{ enTrace === 'zone' ? 'Annuler le tracé' : '⬠ Tracer une zone' }}
         </button>
-        <label class="aimant"><input v-model="aimant" type="checkbox" /> 🧲 Aimant</label>
+        <label class="case"><input v-model="aimant" type="checkbox" /> 🧲 Aimant</label>
+        <label
+          class="case"
+          title="Routes et chemins de la BD TOPO (IGN) qui desservent les Lots. Certains chemins d'exploitation n'y figurent pas, et un chemin peut être privé : l'alerte d'accès invite à vérifier."
+        >
+          <input v-model="voiesVisibles" type="checkbox" :disabled="!voies" /> Voies
+        </label>
       </template>
       <span v-if="enTrace === 'ligne'" class="aide">Clic pour chaque sommet, double-clic ou clic sur le dernier point pour finir</span>
       <span v-if="enTrace === 'zone'" class="aide">Clic pour chaque sommet, clic sur le premier point ou double-clic pour fermer</span>
@@ -624,19 +662,19 @@ defineExpose({ centrerSur })
   box-shadow: var(--ombre);
 }
 .outils .aide,
-.outils .aimant {
+.outils .case {
   background: white;
   padding: 4px 8px;
   border-radius: var(--rayon);
   box-shadow: var(--ombre);
 }
-.outils .aimant {
+.outils .case {
   display: flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
 }
-.outils .aimant input {
+.outils .case input {
   margin: 0;
 }
 .etiquette {

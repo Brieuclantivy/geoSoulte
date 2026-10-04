@@ -28,6 +28,10 @@ _Avoid_: quota, part souhaitée
 Un morceau du Bien issu du Découpage, attribué à exactement un Acquéreur. Un Acquéreur peut avoir plusieurs Lots ; toute la surface du Bien est attribuée, sans partie commune.
 _Avoid_: part, portion, parcelle (un Lot n'est pas une Parcelle cadastrale)
 
+**Lot enclavé**:
+Un Lot qui ne touche ni une route ni un chemin praticable (à 5 m près), ni directement ni par un autre Lot contigu du même Acquéreur. Ce n'est qu'une alerte d'après la BD TOPO de l'IGN, pas une analyse des servitudes.
+_Avoid_: lot sans issue, lot inaccessible
+
 **Découpage**:
 La division du Bien en Lots, proposée automatiquement et/ou ajustée à la main.
 _Avoid_: partage, division, sous-division

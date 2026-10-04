@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import {
+  computed,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  shallowRef,
+  watch,
+} from "vue";
 import Carte from "./components/Carte.vue";
 import PanneauBien from "./components/PanneauBien.vue";
 import PanneauFichier from "./components/PanneauFichier.vue";
@@ -21,6 +29,7 @@ import {
   type Scenario,
 } from "./moteur/bien";
 import { bilanScenario, modifierLigne } from "./moteur/decoupage";
+import { empriseVoies, type Troncon } from "./moteur/acces";
 import {
   annuler,
   creerHistorique,
@@ -30,6 +39,7 @@ import {
   retablir,
 } from "./moteur/historique";
 import { chargerSauvegarde, sauvegarder } from "./persistance";
+import { tronconsDans } from "./voies";
 
 const bien = reactive(chargerSauvegarde() ?? creerBien());
 const historique = reactive(creerHistorique(bien));
@@ -43,6 +53,44 @@ watch(
   { deep: true },
 );
 const bilan = computed(() => bilanBien(bien));
+
+// Tronçons de route autour du Bien, pour signaler les Lots enclavés (null tant qu'ils ne sont pas chargés, ou si
+// le chargement a échoué) ; rechargés seulement quand le Bien sort de l'emprise déjà chargée
+type Emprise = [number, number, number, number];
+const voies = shallowRef<Troncon[] | null>(null);
+let voiesChargees: { emprise: Emprise; troncons: Troncon[] } | null = null;
+let requeteVoies = 0;
+const contient = (a: Emprise, b: Emprise) =>
+  a[0] <= b[0] && a[1] <= b[1] && a[2] >= b[2] && a[3] >= b[3];
+watch(
+  () => empriseVoies(bien.parcelles),
+  async (emprise) => {
+    const numero = ++requeteVoies;
+    if (emprise && voiesChargees && contient(voiesChargees.emprise, emprise)) {
+      voies.value = voiesChargees.troncons;
+      return;
+    }
+
+    voies.value = null;
+    if (!emprise) {
+      return;
+    }
+
+    try {
+      const troncons = await tronconsDans(emprise);
+      // Une requête plus récente a pu être lancée entre-temps
+      if (numero === requeteVoies) {
+        voiesChargees = { emprise, troncons };
+        voies.value = troncons;
+      }
+    } catch (err) {
+      // L'accès reste « non vérifié » dans le bilan
+      console.warn(err);
+    }
+  },
+  { immediate: true },
+);
+
 // Aperçu d'une ligne de coupe en cours de déplacement (non encore appliqué au Bien)
 const apercu = ref<{ index: number; points: number[][] } | null>(null);
 const scenario = computed(() => {
@@ -54,11 +102,11 @@ const scenario = computed(() => {
       ),
     };
     if (modifierLigne(copie, apercu.value.index, apercu.value.points)) {
-      return bilanScenario(copie);
+      return bilanScenario(copie, voies.value);
     }
   }
 
-  return bilanScenario(bien);
+  return bilanScenario(bien, voies.value);
 });
 
 function ligne(index: number, points: number[][], final: boolean) {
@@ -200,6 +248,7 @@ async function ajouter(lon: number, lat: number) {
         :bien="bien"
         :bilan="bilan"
         :scenario="scenario"
+        :voies="voies"
         :peut-annuler="peutAnnuler(historique)"
         :peut-retablir="peutRetablir(historique)"
         @ajouter="ajouter"

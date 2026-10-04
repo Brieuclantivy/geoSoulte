@@ -2,6 +2,7 @@ import type { MultiPolygon, Position } from 'geojson'
 import { difference, intersection, union, type Geom } from 'polyclip-ts'
 import { acquereursOrdonnes, scenarioCourant, tenementsDuBien, type Bien, type LigneCoupe, type Objectif, type Parcelle } from './bien'
 import { prixEffectifs, type PrixEffectifs } from './prix'
+import { lotsEnclaves, type Troncon } from './acces'
 import {
   aire,
   axeLong,
@@ -26,6 +27,8 @@ export interface BilanLot {
   surfaceCadastrale: number
   // Coût en €, ou null si aucun prix n'est saisi
   cout: number | null
+  // Vrai si le Lot est enclavé : attribué, il ne touche ni route ni chemin, même par un autre Lot de son Acquéreur
+  sansAcces: boolean
 }
 
 export interface BilanAcquereur {
@@ -131,11 +134,12 @@ function morceaux(parcelles: Parcelle[], lignes: LigneCoupe[], prix: PrixEffecti
   return resultat
 }
 
-export function bilanScenario(bien: Bien): BilanScenario {
+// `voies` : tronçons de route autour du Bien, ou null s'ils ne sont pas (encore) chargés
+export function bilanScenario(bien: Bien, voies: Troncon[] | null = null): BilanScenario {
   const { lignes, attributions, objectifs, decoupe } = scenarioCourant(bien)
   const prix = prixEffectifs(bien)
   const avecPrix = prix.parM2.size > 0
-  const lots: BilanLot[] = tenementsDuBien(bien).flatMap(({ cle, parcelles }) => {
+  const decoupes = tenementsDuBien(bien).flatMap(({ cle, parcelles }) => {
     const parSignature = new Map<string, Morceau[]>()
     for (const m of morceaux(
       parcelles,
@@ -155,6 +159,8 @@ export function bilanScenario(bien: Bien): BilanScenario {
       cout: avecPrix ? ms.reduce((t, m) => t + aire(m.geometrie) * m.densite * m.prix, 0) : null,
     }))
   })
+  const enclaves = lotsEnclaves(decoupes, voies)
+  const lots: BilanLot[] = decoupes.map((l) => ({ ...l, sansAcces: enclaves.includes(l) }))
 
   const acquereurs = bien.acquereurs.map(({ id }) => {
     const siens = lots.filter((l) => l.acquereur === id)
@@ -179,6 +185,22 @@ export function bilanScenario(bien: Bien): BilanScenario {
 
   if (prix.sansPrix.length > 0) {
     avertissements.push(`Parcelles sans prix à l'hectare (Coût nul) : ${prix.sansPrix.join(', ')}`)
+  }
+
+  if (voies === null && lots.some((l) => l.acquereur !== null)) {
+    avertissements.push('Accès des Lots aux routes et chemins non vérifié : voies non chargées')
+  }
+
+  for (const lot of enclaves) {
+    const nom = bien.acquereurs.find((a) => a.id === lot.acquereur)?.nom
+    const surface = (lot.surfaceCadastrale / 10000).toFixed(2).replace('.', ',')
+    avertissements.push(`Lot de ${nom} (${surface} ha, Tènement ${lot.tenement}) : aucun accès à une route ou un chemin`)
+  }
+
+  if (enclaves.length) {
+    avertissements.push(
+      "Accès estimé d'après la BD TOPO (IGN), qui ne recense pas tous les chemins ni les servitudes : à vérifier sur place",
+    )
   }
 
   const tenements = tenementsDuBien(bien)
