@@ -7,6 +7,7 @@ import PanneauAcquereurs from "./components/PanneauAcquereurs.vue";
 import PanneauPrix from "./components/PanneauPrix.vue";
 import PanneauScenarios from "./components/PanneauScenarios.vue";
 import Recapitulatif from "./components/Recapitulatif.vue";
+import Guide from "./components/Guide.vue";
 import { parcelleEn, type Commune } from "./cadastre";
 import { hectares } from "./format";
 import {
@@ -52,6 +53,7 @@ function ligne(index: number, points: number[][], final: boolean) {
   }
 }
 const carte = ref<InstanceType<typeof Carte>>();
+const guide = ref<InstanceType<typeof Guide>>();
 const chargement = ref(false);
 
 function centrer(commune: Commune) {
@@ -114,9 +116,12 @@ async function ajouter(lon: number, lat: number) {
     <aside>
       <header>
         <h1>GéoSoulte</h1>
-        <button type="button" @click="imprimer">
-          Imprimer le récapitulatif
-        </button>
+        <div class="actions">
+          <button type="button" @click="guide?.ouvrir()">? Aide</button>
+          <button type="button" @click="imprimer">
+            Imprimer le récapitulatif
+          </button>
+        </div>
         <p class="indicatif">
           Simulation purement indicative : ni plan de géomètre, ni document
           officiel.
@@ -152,6 +157,7 @@ async function ajouter(lon: number, lat: number) {
       />
       <Recapitulatif :bien="bien" :bilan="bilan" :scenario="scenario" />
     </main>
+    <Guide ref="guide" />
   </div>
 </template>
 
@@ -177,6 +183,10 @@ header {
   align-items: center;
   gap: 4px 8px;
   padding: 16px 0 14px;
+}
+.actions {
+  display: flex;
+  gap: 6px;
 }
 h1 {
   margin: 0;
