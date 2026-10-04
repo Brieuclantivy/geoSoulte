@@ -56,6 +56,10 @@ _Avoid_: épingle, forçage
 Le prix en euros d'une Parcelle, exprimé à l'hectare et/ou en total pour le Bien, saisi par l'utilisateur.
 _Avoid_: estimation
 
+**Prix de référence**:
+Le prix à l'hectare des ventes récentes de terres non bâties d'une commune (médiane et quartiles des Demandes de valeurs foncières, par nature de culture). Ce n'est qu'une aide à la saisie de la Valeur, jamais appliqué tout seul ni enregistré.
+_Avoid_: estimation, prix du marché, valeur DVF
+
 **Coût**:
 Ce que paie un Acquéreur pour un Lot, déduit de la Valeur des surfaces qu'il couvre.
 _Avoid_: prix (réservé à la saisie), quote-part
