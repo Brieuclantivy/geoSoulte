@@ -13,9 +13,12 @@ import Polygon from 'ol/geom/Polygon'
 import Modify from 'ol/interaction/Modify'
 import Draw from 'ol/interaction/Draw'
 import Snap from 'ol/interaction/Snap'
+import type MapBrowserEvent from 'ol/MapBrowserEvent'
 import { Circle, Fill, Stroke, Style } from 'ol/style'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { fixerOrientation, scenarioCourant, type Bien, type BilanBien } from '../moteur/bien'
+import { prixEffectifs } from '../moteur/prix'
+import { euros, hectares } from '../format'
 import Boussole from './Boussole.vue'
 import {
   ajouterLigne,
@@ -267,12 +270,61 @@ function touche(e: KeyboardEvent) {
   }
 }
 
+// Informations sur la Parcelle du Bien et le Lot situés en un point : au survol, et en tête du menu
+type Info = [libelle: string, valeur: string]
+function infosEn(coordonnee: number[]): Info[] {
+  const infos: Info[] = []
+  const id = sourceBien.getFeaturesAtCoordinate(coordonnee)[0]?.getId()
+  const parcelle = props.bilan.parcelles.find((p) => p.id === id)
+  if (parcelle) {
+    infos.push(
+      ['Parcelle', parcelle.id],
+      ['Tènement', String(parcelle.tenement + 1)],
+      ['Contenance', hectares(parcelle.contenance)],
+      ['Surface mesurée', hectares(parcelle.surfaceMesuree)],
+    )
+    const prix = prixEffectifs(props.bien)
+    const parM2 = prix.parM2.get(parcelle.id)
+    if (parM2 !== undefined) {
+      const recale = prix.ecartAvantRecalage !== null && Math.abs(prix.ecartAvantRecalage) >= 1
+      infos.push(
+        [recale ? "Prix à l'hectare recalé" : "Prix à l'hectare", euros(parM2 * 10000)],
+        [recale ? 'Valeur recalée' : 'Valeur', euros(parM2 * parcelle.contenance)],
+      )
+    }
+  }
+
+  const feature = sourceLots.getFeaturesAtCoordinate(coordonnee)[0]
+  const lot = props.scenario.lots.find((l) => l.tenement === feature?.get('tenement') && l.signature === feature?.get('signature'))
+  if (lot) {
+    infos.push(
+      ['Lot de', props.bien.acquereurs.find((a) => a.id === lot.acquereur)?.nom ?? 'personne'],
+      ['Surface cadastrale du Lot', hectares(lot.surfaceCadastrale)],
+    )
+    if (lot.cout !== null) {
+      infos.push(['Coût du Lot', euros(lot.cout)])
+    }
+  }
+
+  return infos
+}
+
+// Étiquette au survol, à la souris seulement (au doigt, les informations sont en tête du menu de l'appui long) ;
+// masquée pendant un geste, un tracé ou quand le menu est ouvert
+const survol = ref<{ x: number; y: number; versLaGauche: boolean; infos: Info[] } | null>(null)
+function survoler(e: MapBrowserEvent) {
+  const libre = (e.originalEvent as PointerEvent).pointerType === 'mouse' && !e.dragging && !enTrace.value && !enCours && !menu.value
+  const infos = libre ? infosEn(e.coordinate) : []
+  const [x, y] = e.pixel
+  survol.value = infos.length ? { x, y, versLaGauche: x > carte.getSize()![0] - 280, infos } : null
+}
+
 // Menu ouvert par un clic droit (ou un appui long au doigt), selon ce qui est dessous : une ligne de coupe
 // (suppression), un Lot (réattribution, retrait de la Parcelle), une Parcelle du Bien avant tout Découpage
 // (retrait), ou un point hors du Bien (ajout de la Parcelle). Un clic gauche ou Échap le ferme.
 const menu = ref<
-  | { x: number; y: number; type: 'lot'; tenement: string; signature: string; parcelle: string | null }
-  | { x: number; y: number; type: 'parcelle'; parcelle: string }
+  | { x: number; y: number; type: 'lot'; tenement: string; signature: string; parcelle: string | null; infos: Info[] }
+  | { x: number; y: number; type: 'parcelle'; parcelle: string; infos: Info[] }
   | { x: number; y: number; type: 'dehors'; lon: number; lat: number }
   // sommet : indice du sommet sous le pointeur, s'il peut être supprimé
   | { x: number; y: number; type: 'ligne'; index: number; sommet: number | null }
@@ -300,14 +352,16 @@ function ouvrirMenu(pixel: number[]) {
     return
   }
 
+  survol.value = null
   const coordonnee = carte.getCoordinateFromPixel(pixel)
+  const infos = infosEn(coordonnee)
   const parcelle = sourceBien.getFeaturesAtCoordinate(coordonnee)[0]
   const id = parcelle ? String(parcelle.getId()) : null
   const lot = sourceLots.getFeaturesAtCoordinate(coordonnee)[0]
   if (lot) {
-    menu.value = { x, y, type: 'lot', tenement: lot.get('tenement'), signature: lot.get('signature'), parcelle: id }
+    menu.value = { x, y, type: 'lot', tenement: lot.get('tenement'), signature: lot.get('signature'), parcelle: id, infos }
   } else if (id) {
-    menu.value = { x, y, type: 'parcelle', parcelle: id }
+    menu.value = { x, y, type: 'parcelle', parcelle: id, infos }
   } else {
     const [lon, lat] = toLonLat(coordonnee)
     menu.value = { x, y, type: 'dehors', lon, lat }
@@ -433,6 +487,8 @@ onMounted(() => {
       ouvrirMenu(carte.getEventPixel(e))
     }
   })
+  carte.on('pointermove', survoler)
+  fenetre.addEventListener('mouseleave', () => (survol.value = null))
   fenetre.addEventListener('pointerdown', debutAppui)
   fenetre.addEventListener('pointermove', deplacementAppui)
   fenetre.addEventListener('pointerup', annulerAppui)
@@ -492,7 +548,27 @@ defineExpose({ centrerSur })
       <span v-if="enTrace === 'ligne'" class="aide">Clic pour chaque sommet, double-clic ou clic sur le dernier point pour finir</span>
       <span v-if="enTrace === 'zone'" class="aide">Clic pour chaque sommet, clic sur le premier point ou double-clic pour fermer</span>
     </div>
+    <dl
+      v-if="survol"
+      class="etiquette infos"
+      :style="
+        survol.versLaGauche
+          ? { right: `calc(100% - ${survol.x - 14}px)`, top: survol.y + 14 + 'px' }
+          : { left: survol.x + 14 + 'px', top: survol.y + 14 + 'px' }
+      "
+    >
+      <template v-for="[libelle, valeur] in survol.infos" :key="libelle">
+        <dt>{{ libelle }}</dt>
+        <dd>{{ valeur }}</dd>
+      </template>
+    </dl>
     <div v-if="menu" class="menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }">
+      <dl v-if="(menu.type === 'lot' || menu.type === 'parcelle') && menu.infos.length" class="infos">
+        <template v-for="[libelle, valeur] in menu.infos" :key="libelle">
+          <dt>{{ libelle }}</dt>
+          <dd>{{ valeur }}</dd>
+        </template>
+      </dl>
       <template v-if="menu.type === 'lot'">
         <div class="titre">Attribuer ce Lot à</div>
         <button v-for="a in bien.acquereurs" :key="a.id" type="button" @click="choisirAcquereur(a.id)">
@@ -568,6 +644,35 @@ defineExpose({ centrerSur })
 }
 .outils .aimant input {
   margin: 0;
+}
+.etiquette {
+  position: absolute;
+  margin: 0;
+  padding: 6px 10px;
+  background: white;
+  border-radius: var(--rayon);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+.infos {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 2px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.infos dt {
+  color: var(--discret);
+}
+.infos dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.menu .infos {
+  margin: 0 0 4px;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid var(--bordure);
 }
 .menu {
   position: absolute;
@@ -649,6 +754,7 @@ defineExpose({ centrerSur })
 @media print {
   .outils,
   .menu,
+  .etiquette,
   .fonds,
   .boussole,
   .carte :deep(.ol-control) {

@@ -8,6 +8,7 @@ import PanneauPrix from "./components/PanneauPrix.vue";
 import PanneauScenarios from "./components/PanneauScenarios.vue";
 import Recapitulatif from "./components/Recapitulatif.vue";
 import { parcelleEn, type Commune } from "./cadastre";
+import { hectares } from "./format";
 import {
   ajouterParcelle,
   bilanBien,
@@ -96,7 +97,7 @@ async function ajouter(lon: number, lat: number) {
     if (
       parcelle &&
       confirmer(
-        `Ajouter la Parcelle ${parcelle.id} au Bien ?`,
+        `Ajouter la Parcelle ${parcelle.id} (${hectares(parcelle.contenance)}) au Bien ?`,
         scenariosTouchesParAjout(bien, parcelle),
       )
     ) {
