@@ -89,12 +89,7 @@ function retirer(id: string) {
   }
 }
 
-async function clic(lon: number, lat: number, idParcelle: string | null) {
-  if (idParcelle) {
-    retirer(idParcelle);
-    return;
-  }
-
+async function ajouter(lon: number, lat: number) {
   chargement.value = true;
   try {
     const parcelle = await parcelleEn(lon, lat);
@@ -150,7 +145,7 @@ async function clic(lon: number, lat: number, idParcelle: string | null) {
         :bien="bien"
         :bilan="bilan"
         :scenario="scenario"
-        @clic="clic"
+        @ajouter="ajouter"
         @ligne="ligne"
         @retirer="retirer"
       />

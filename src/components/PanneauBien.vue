@@ -34,7 +34,7 @@ function choisir(commune: Commune) {
       </li>
     </ul>
 
-    <p v-if="!bilan.parcelles.length" class="aide">Cliquez sur une Parcelle de la carte pour l'ajouter au Bien.</p>
+    <p v-if="!bilan.parcelles.length" class="aide">Clic droit (ou appui long) sur une Parcelle de la carte pour l'ajouter au Bien.</p>
     <p v-if="chargement" class="aide">Chargement de la Parcelle…</p>
 
     <table v-if="bilan.parcelles.length">

@@ -21,8 +21,8 @@ import { ajouterLigne, fermerLigne, reattribuer, supprimerLigne, type BilanScena
 
 const props = defineProps<{ bien: Bien; bilan: BilanBien; scenario: BilanScenario }>()
 const emit = defineEmits<{
-  // idParcelle : la Parcelle du Bien cliquée, ou null si le clic est hors du Bien
-  clic: [lon: number, lat: number, idParcelle: string | null]
+  // Ajout de la Parcelle située en ce point, depuis le menu ouvert hors du Bien
+  ajouter: [lon: number, lat: number]
   // Ligne de coupe en cours de modification (final = false pendant le geste, true à la fin)
   ligne: [index: number, points: number[][], final: boolean]
   // Retrait d'une Parcelle depuis le menu d'un Lot
@@ -123,7 +123,7 @@ watch(
     sourceLots.clear()
     for (const lot of scenario.lots) {
       const couleur = props.bien.acquereurs.find((a) => a.id === lot.acquereur)?.couleur
-      // Avant tout Découpage, les Lots ne sont pas affichés : un clic sur le Bien retire la Parcelle
+      // Avant tout Découpage, les Lots ne sont pas affichés : le menu du Bien ne propose que de retirer la Parcelle
       if (!couleur && !scenarioCourant(props.bien).decoupe) {
         continue
       }
@@ -175,6 +175,7 @@ function pointsDe(f: Feature<LineString | Polygon>): number[][] {
 let enCours: Feature<LineString | Polygon> | null = null
 let image = 0
 modification.on('modifystart', (e) => {
+  menu.value = null
   enCours = e.features.item(0) as Feature<LineString | Polygon>
 })
 sourceLignes.on('changefeature', (e) => {
@@ -248,14 +249,86 @@ function touche(e: KeyboardEvent) {
     traces[enTrace.value].abortDrawing()
     basculerTrace(null)
   }
+
+  if (e.key === 'Escape') {
+    menu.value = null
+  }
 }
 
-// Menu ouvert par un clic sur un Lot (réattribution, retrait de la Parcelle cliquée) ou sur une ligne de coupe (suppression)
+// Menu ouvert par un clic droit (ou un appui long au doigt), selon ce qui est dessous : une ligne de coupe
+// (suppression), un Lot (réattribution, retrait de la Parcelle), une Parcelle du Bien avant tout Découpage
+// (retrait), ou un point hors du Bien (ajout de la Parcelle). Un clic gauche ou Échap le ferme.
 const menu = ref<
   | { x: number; y: number; type: 'lot'; tenement: string; signature: string; parcelle: string | null }
+  | { x: number; y: number; type: 'parcelle'; parcelle: string }
+  | { x: number; y: number; type: 'dehors'; lon: number; lat: number }
   | { x: number; y: number; type: 'ligne'; index: number }
   | null
 >(null)
+
+function ouvrirMenu(pixel: number[]) {
+  // Pendant un tracé, la carte ne sert qu'à poser des sommets
+  if (enTrace.value) {
+    return
+  }
+
+  const [x, y] = pixel
+  const ligne = carte.forEachFeatureAtPixel(pixel, (f) => f, { layerFilter: (c) => c === coucheLignes, hitTolerance: 6 })
+  if (ligne) {
+    menu.value = { x, y, type: 'ligne', index: ligne.get('index') }
+    return
+  }
+
+  const coordonnee = carte.getCoordinateFromPixel(pixel)
+  const parcelle = sourceBien.getFeaturesAtCoordinate(coordonnee)[0]
+  const id = parcelle ? String(parcelle.getId()) : null
+  const lot = sourceLots.getFeaturesAtCoordinate(coordonnee)[0]
+  if (lot) {
+    menu.value = { x, y, type: 'lot', tenement: lot.get('tenement'), signature: lot.get('signature'), parcelle: id }
+  } else if (id) {
+    menu.value = { x, y, type: 'parcelle', parcelle: id }
+  } else {
+    const [lon, lat] = toLonLat(coordonnee)
+    menu.value = { x, y, type: 'dehors', lon, lat }
+  }
+}
+
+// Appui long au doigt (Safari iOS n'émet pas de contextmenu) : ouvre le menu si le doigt reste immobile ;
+// un déplacement ou un second doigt (zoom) l'annule
+const DUREE_APPUI_LONG = 500
+let appui: { id: number; x: number; y: number; minuterie: number } | null = null
+// Le relâcher qui suit un appui long ne doit pas compter comme un clic, qui fermerait le menu
+let appuiLongFini = false
+function annulerAppui() {
+  if (appui) {
+    clearTimeout(appui.minuterie)
+    appui = null
+  }
+}
+function debutAppui(e: PointerEvent) {
+  annulerAppui()
+  appuiLongFini = false
+  if (e.pointerType !== 'touch' || !e.isPrimary) {
+    return
+  }
+
+  const pixel = carte.getEventPixel(e)
+  appui = {
+    id: e.pointerId,
+    x: e.clientX,
+    y: e.clientY,
+    minuterie: window.setTimeout(() => {
+      appui = null
+      appuiLongFini = true
+      ouvrirMenu(pixel)
+    }, DUREE_APPUI_LONG),
+  }
+}
+function deplacementAppui(e: PointerEvent) {
+  if (appui && (e.pointerId !== appui.id || Math.hypot(e.clientX - appui.x, e.clientY - appui.y) > 10)) {
+    annulerAppui()
+  }
+}
 
 function choisirAcquereur(acquereur: string) {
   if (menu.value?.type === 'lot') {
@@ -266,8 +339,16 @@ function choisirAcquereur(acquereur: string) {
 }
 
 function retirerLaParcelle() {
-  if (menu.value?.type === 'lot' && menu.value.parcelle) {
+  if ((menu.value?.type === 'lot' || menu.value?.type === 'parcelle') && menu.value.parcelle) {
     emit('retirer', menu.value.parcelle)
+  }
+
+  menu.value = null
+}
+
+function ajouterLaParcelle() {
+  if (menu.value?.type === 'dehors') {
+    emit('ajouter', menu.value.lon, menu.value.lat)
   }
 
   menu.value = null
@@ -303,31 +384,26 @@ onMounted(() => {
   window.addEventListener('keydown', touche)
   impression.addEventListener('change', changementImpression)
   carte.on('movestart', () => (menu.value = null))
-  carte.on('singleclick', (e) => {
+  carte.on('singleclick', () => {
+    if (appuiLongFini) {
+      appuiLongFini = false
+      return
+    }
+
     menu.value = null
-    // Pendant un tracé, les clics posent des sommets ; Alt+clic supprime un sommet de ligne
-    if (enTrace.value || e.originalEvent.altKey) {
-      return
-    }
-
-    const [x, y] = e.pixel
-    const ligne = carte.forEachFeatureAtPixel(e.pixel, (f) => f, { layerFilter: (c) => c === coucheLignes, hitTolerance: 6 })
-    if (ligne) {
-      menu.value = { x, y, type: 'ligne', index: ligne.get('index') }
-      return
-    }
-
-    const parcelle = sourceBien.getFeaturesAtCoordinate(e.coordinate)[0]
-    const lot = sourceLots.getFeaturesAtCoordinate(e.coordinate)[0]
-    if (lot) {
-      const id = parcelle ? String(parcelle.getId()) : null
-      menu.value = { x, y, type: 'lot', tenement: lot.get('tenement'), signature: lot.get('signature'), parcelle: id }
-      return
-    }
-
-    const [lon, lat] = toLonLat(e.coordinate)
-    emit('clic', lon, lat, parcelle ? String(parcelle.getId()) : null)
   })
+  const fenetre = carte.getViewport()
+  fenetre.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+    // Sur Android, l'appui long émet aussi contextmenu : le menu est déjà ouvert
+    if (!appuiLongFini) {
+      ouvrirMenu(carte.getEventPixel(e))
+    }
+  })
+  fenetre.addEventListener('pointerdown', debutAppui)
+  fenetre.addEventListener('pointermove', deplacementAppui)
+  fenetre.addEventListener('pointerup', annulerAppui)
+  fenetre.addEventListener('pointercancel', annulerAppui)
 })
 
 // Impression : la carte est cadrée sur le Bien et redimensionnée au format de la page. On suit le média
@@ -393,6 +469,12 @@ defineExpose({ centrerSur })
           Retirer la Parcelle {{ menu.parcelle }} du Bien
         </button>
       </template>
+      <button v-else-if="menu.type === 'parcelle'" type="button" @click="retirerLaParcelle">
+        Retirer la Parcelle {{ menu.parcelle }} du Bien
+      </button>
+      <button v-else-if="menu.type === 'dehors'" type="button" @click="ajouterLaParcelle">
+        Ajouter au Bien la Parcelle située ici
+      </button>
       <template v-else>
         <button
           v-if="scenario.brouillons.includes(menu.index) && scenarioCourant(bien).lignes[menu.index].points.length >= 3"
@@ -492,6 +574,9 @@ defineExpose({ centrerSur })
 .ol {
   position: absolute;
   inset: 0;
+  /* Pas de loupe ni de sélection de texte à l'appui long, qui ouvre le menu */
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 .fonds {
   position: absolute;
