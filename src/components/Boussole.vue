@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 // orientation : direction d'avancée des bandes en degrés (0 = est, 90 = nord), null = automatique
 const props = defineProps<{ orientation: number | null }>()
 const emit = defineEmits<{ change: [orientation: number | null] }>()
 const cadran = ref<HTMLDivElement>()
-let glisse = false
+// Angle suivi pendant le glissé : il n'est transmis qu'au lâcher, pour que le geste soit une seule étape à annuler
+const glisse = ref<number | null>(null)
+const orientation = computed(() => glisse.value ?? props.orientation)
 
 function angleDu(e: PointerEvent): number {
   const r = cadran.value!.getBoundingClientRect()
@@ -14,14 +16,20 @@ function angleDu(e: PointerEvent): number {
 }
 
 function debut(e: PointerEvent) {
-  glisse = true
   cadran.value!.setPointerCapture(e.pointerId)
-  emit('change', angleDu(e))
+  glisse.value = angleDu(e)
 }
 
 function deplacement(e: PointerEvent) {
-  if (glisse) {
-    emit('change', angleDu(e))
+  if (glisse.value !== null) {
+    glisse.value = angleDu(e)
+  }
+}
+
+function fin() {
+  if (glisse.value !== null) {
+    emit('change', glisse.value)
+    glisse.value = null
   }
 }
 </script>
@@ -34,18 +42,18 @@ function deplacement(e: PointerEvent) {
       title="Faites tourner la flèche pour choisir le sens d'avancée des bandes"
       @pointerdown="debut"
       @pointermove="deplacement"
-      @pointerup="glisse = false"
+      @pointerup="fin"
     >
       <!-- En mode Auto, chaque Tènement suit son grand côté : aucune direction unique à montrer -->
-      <svg v-if="props.orientation !== null" viewBox="-50 -50 100 100" :style="{ transform: `rotate(${-props.orientation}deg)` }">
+      <svg v-if="orientation !== null" viewBox="-50 -50 100 100" :style="{ transform: `rotate(${-orientation}deg)` }">
         <line x1="-34" y1="0" x2="30" y2="0" />
         <polygon points="40,0 24,-10 24,10" />
       </svg>
     </div>
     <div class="legende">
-      <template v-if="props.orientation === null">Auto</template>
+      <template v-if="orientation === null">Auto</template>
       <template v-else>
-        {{ props.orientation }}° <button type="button" @click="emit('change', null)">Auto</button>
+        {{ orientation }}° <button type="button" @click="emit('change', null)">Auto</button>
       </template>
     </div>
   </div>

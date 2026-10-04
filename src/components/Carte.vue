@@ -29,10 +29,18 @@ import {
   type BilanScenario,
 } from '../moteur/decoupage'
 
-const props = defineProps<{ bien: Bien; bilan: BilanBien; scenario: BilanScenario }>()
+const props = defineProps<{
+  bien: Bien
+  bilan: BilanBien
+  scenario: BilanScenario
+  peutAnnuler: boolean
+  peutRetablir: boolean
+}>()
 const emit = defineEmits<{
   // Ajout de la Parcelle située en ce point, depuis le menu ouvert hors du Bien
   ajouter: [lon: number, lat: number]
+  annuler: []
+  retablir: []
   // Ligne de coupe en cours de modification (final = false pendant le geste, true à la fin)
   ligne: [index: number, points: number[][], final: boolean]
   // Retrait d'une Parcelle depuis le menu d'un Lot
@@ -520,6 +528,8 @@ defineExpose({ centrerSur })
   <div class="carte">
     <div ref="cible" class="ol"></div>
     <div class="outils">
+      <button type="button" title="Annuler (Ctrl+Z)" :disabled="!peutAnnuler" @click="emit('annuler')">↶</button>
+      <button type="button" title="Rétablir (Ctrl+Maj+Z)" :disabled="!peutRetablir" @click="emit('retablir')">↷</button>
       <template v-if="bien.parcelles.length">
         <button type="button" @click="basculerTrace('ligne')">
           {{ enTrace === 'ligne' ? 'Annuler le tracé' : '✏ Tracer une ligne de coupe' }}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import Carte from "./components/Carte.vue";
 import PanneauBien from "./components/PanneauBien.vue";
 import PanneauFichier from "./components/PanneauFichier.vue";
@@ -21,10 +21,27 @@ import {
   type Scenario,
 } from "./moteur/bien";
 import { bilanScenario, modifierLigne } from "./moteur/decoupage";
+import {
+  annuler,
+  creerHistorique,
+  enregistrer,
+  peutAnnuler,
+  peutRetablir,
+  retablir,
+} from "./moteur/historique";
 import { chargerSauvegarde, sauvegarder } from "./persistance";
 
 const bien = reactive(chargerSauvegarde() ?? creerBien());
-watch(bien, () => sauvegarder(bien), { deep: true });
+const historique = reactive(creerHistorique(bien));
+// Vue regroupe les changements d'un même tick : une action, même faite de plusieurs modifications, est une étape
+watch(
+  bien,
+  () => {
+    sauvegarder(bien);
+    enregistrer(historique, bien);
+  },
+  { deep: true },
+);
 const bilan = computed(() => bilanBien(bien));
 // Aperçu d'une ligne de coupe en cours de déplacement (non encore appliqué au Bien)
 const apercu = ref<{ index: number; points: number[][] } | null>(null);
@@ -67,6 +84,38 @@ function imprimer() {
 function remplacer(nouveau: Bien) {
   Object.assign(bien, nouveau);
 }
+
+// L'état restauré remplace le Bien comme un import ; l'historique le reconnaît comme son état courant, sans
+// créer d'étape
+function restaurer(etat: Bien | null) {
+  if (etat) {
+    remplacer(etat);
+  }
+}
+
+// Ctrl+Z (Cmd+Z sur Mac) annule, Ctrl+Maj+Z ou Ctrl+Y rétablit. Dans un champ de texte, l'annulation native du
+// navigateur s'applique
+function raccourci(e: KeyboardEvent) {
+  if (
+    !(e.ctrlKey || e.metaKey) ||
+    (e.target as Element).closest(
+      "textarea, [contenteditable], input:not([type=checkbox], [type=radio], [type=file])",
+    )
+  ) {
+    return;
+  }
+
+  const touche = e.key.toLowerCase();
+  if (touche === "z" && !e.shiftKey) {
+    e.preventDefault();
+    restaurer(annuler(historique));
+  } else if (touche === "z" || touche === "y") {
+    e.preventDefault();
+    restaurer(retablir(historique));
+  }
+}
+onMounted(() => window.addEventListener("keydown", raccourci));
+onUnmounted(() => window.removeEventListener("keydown", raccourci));
 
 // Changer les Parcelles efface le Découpage du Tènement concerné dans tous les Scénarios : on ne demande
 // confirmation que s'il y a un Découpage à perdre
@@ -151,8 +200,12 @@ async function ajouter(lon: number, lat: number) {
         :bien="bien"
         :bilan="bilan"
         :scenario="scenario"
+        :peut-annuler="peutAnnuler(historique)"
+        :peut-retablir="peutRetablir(historique)"
         @ajouter="ajouter"
+        @annuler="restaurer(annuler(historique))"
         @ligne="ligne"
+        @retablir="restaurer(retablir(historique))"
         @retirer="retirer"
       />
       <Recapitulatif :bien="bien" :bilan="bilan" :scenario="scenario" />

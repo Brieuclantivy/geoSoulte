@@ -47,6 +47,7 @@ const etapes = [
       'Glissez les sommets des lignes de coupe, ou tirez le milieu d’un segment pour en ajouter un. « Tracer une ligne de coupe » ou « Tracer une zone » ajoute vos propres découpes.',
       'Clic droit (ou appui long) sur un Lot pour le donner à un autre Acquéreur, sur une ligne pour la supprimer. Au survol, la surface et la valeur s’affichent.',
     ],
+    astuce: 'Une fausse manœuvre ? ↶ (Ctrl+Z) annule la dernière action, ↷ (Ctrl+Maj+Z) la rétablit.',
   },
   {
     titre: '6. Comparer et conserver',
