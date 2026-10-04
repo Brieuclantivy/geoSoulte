@@ -270,43 +270,27 @@ function touche(e: KeyboardEvent) {
   }
 }
 
-// Informations sur la Parcelle du Bien et le Lot situés en un point : au survol, et en tête du menu
+// Surface et Valeur du Lot situé en un point (de la Parcelle du Bien avant tout Découpage) : au survol, et en tête
+// du menu
 type Info = [libelle: string, valeur: string]
 function infosEn(coordonnee: number[]): Info[] {
-  const infos: Info[] = []
-  const id = sourceBien.getFeaturesAtCoordinate(coordonnee)[0]?.getId()
-  const parcelle = props.bilan.parcelles.find((p) => p.id === id)
-  if (parcelle) {
-    infos.push(
-      ['Parcelle', parcelle.id],
-      ['Tènement', String(parcelle.tenement + 1)],
-      ['Contenance', hectares(parcelle.contenance)],
-      ['Surface mesurée', hectares(parcelle.surfaceMesuree)],
-    )
-    const prix = prixEffectifs(props.bien)
-    const parM2 = prix.parM2.get(parcelle.id)
-    if (parM2 !== undefined) {
-      const recale = prix.ecartAvantRecalage !== null && Math.abs(prix.ecartAvantRecalage) >= 1
-      infos.push(
-        [recale ? "Prix à l'hectare recalé" : "Prix à l'hectare", euros(parM2 * 10000)],
-        [recale ? 'Valeur recalée' : 'Valeur', euros(parM2 * parcelle.contenance)],
-      )
-    }
-  }
-
   const feature = sourceLots.getFeaturesAtCoordinate(coordonnee)[0]
   const lot = props.scenario.lots.find((l) => l.tenement === feature?.get('tenement') && l.signature === feature?.get('signature'))
   if (lot) {
-    infos.push(
-      ['Lot de', props.bien.acquereurs.find((a) => a.id === lot.acquereur)?.nom ?? 'personne'],
-      ['Surface cadastrale du Lot', hectares(lot.surfaceCadastrale)],
-    )
-    if (lot.cout !== null) {
-      infos.push(['Coût du Lot', euros(lot.cout)])
-    }
+    return [['Surface', hectares(lot.surfaceCadastrale)], ...(lot.cout === null ? [] : [['Valeur', euros(lot.cout)] as Info])]
   }
 
-  return infos
+  const id = sourceBien.getFeaturesAtCoordinate(coordonnee)[0]?.getId()
+  const parcelle = props.bilan.parcelles.find((p) => p.id === id)
+  if (!parcelle) {
+    return []
+  }
+
+  const parM2 = prixEffectifs(props.bien).parM2.get(parcelle.id)
+  return [
+    ['Surface', hectares(parcelle.contenance)],
+    ...(parM2 === undefined ? [] : [['Valeur', euros(parM2 * parcelle.contenance)] as Info]),
+  ]
 }
 
 // Étiquette au survol, à la souris seulement (au doigt, les informations sont en tête du menu de l'appui long) ;
