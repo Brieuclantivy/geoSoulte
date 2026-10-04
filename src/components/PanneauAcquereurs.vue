@@ -205,7 +205,7 @@ const acquereur = (id: string | null) => props.bien.acquereurs.find((a) => a.id 
     </details>
     <p v-if="scenarioCourant(bien).lignes.length" class="aide">
       Ajustez les lignes de coupe sur la carte : glissez un sommet, tirez le milieu d'un segment pour ajouter un
-      sommet, Alt+clic pour en supprimer un. Clic droit (ou appui long) sur un Lot pour le réattribuer, sur une ligne pour la supprimer.
+      sommet, clic droit (ou appui long) sur un sommet pour le supprimer. Clic droit (ou appui long) sur un Lot pour le réattribuer, sur une ligne pour la supprimer.
       Une ligne dont une extrémité est dans le Bien reste un brouillon (orange) qui ne coupe rien, tant que vous
       ne l'avez pas prolongée au-dehors ou fermée (clic droit dessus pour relier ses extrémités).
     </p>

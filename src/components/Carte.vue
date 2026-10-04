@@ -17,7 +17,14 @@ import { Circle, Fill, Stroke, Style } from 'ol/style'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { fixerOrientation, scenarioCourant, type Bien, type BilanBien } from '../moteur/bien'
 import Boussole from './Boussole.vue'
-import { ajouterLigne, fermerLigne, reattribuer, supprimerLigne, type BilanScenario } from '../moteur/decoupage'
+import {
+  ajouterLigne,
+  fermerLigne,
+  modifierLigne,
+  reattribuer,
+  supprimerLigne,
+  type BilanScenario,
+} from '../moteur/decoupage'
 
 const props = defineProps<{ bien: Bien; bilan: BilanBien; scenario: BilanScenario }>()
 const emit = defineEmits<{
@@ -204,14 +211,15 @@ modification.on('modifyend', (e) => {
 // finir (ou clic sur le premier point pour fermer une zone), Échap pour annuler
 const traces = { ligne: new Draw({ type: 'LineString' }), zone: new Draw({ type: 'Polygon' }) }
 const enTrace = ref<keyof typeof traces | null>(null)
+// Le tracé n'est retiré qu'après l'événement en cours : il absorbe ainsi le double-clic de fin, qui sinon zoomerait
 traces.ligne.on('drawend', (e) => {
-  basculerTrace(null)
+  setTimeout(() => basculerTrace(null))
   if (!ajouterLigne(props.bien, pointsDe(e.feature as Feature<LineString>))) {
     alert('La ligne doit toucher le Bien et y découper au moins un Lot.')
   }
 })
 traces.zone.on('drawend', (e) => {
-  basculerTrace(null)
+  setTimeout(() => basculerTrace(null))
   if (!ajouterLigne(props.bien, pointsDe(e.feature as Feature<Polygon>), true)) {
     alert('La zone doit découper au moins un Lot du Bien.')
   }
@@ -231,10 +239,14 @@ function basculerTrace(mode: keyof typeof traces | null) {
   placerAimant()
 }
 
-// Aimant : pendant un tracé ou le déplacement d'un sommet, colle le pointeur aux sommets et bords proches (10 px)
-// des lignes de coupe et des Parcelles du Bien
+// Aimant : pendant un tracé ou le déplacement d'un sommet, colle le pointeur aux sommets et bords proches
+// des lignes de coupe et des Parcelles du Bien (10 px, 16 px au doigt)
 const aimant = ref(true)
-const accroches = [new Snap({ source: sourceLignes }), new Snap({ source: sourceBien })]
+const PROXIMITE = window.matchMedia('(pointer: coarse)').matches ? 16 : 10
+const accroches = [
+  new Snap({ source: sourceLignes, pixelTolerance: PROXIMITE }),
+  new Snap({ source: sourceBien, pixelTolerance: PROXIMITE }),
+]
 // Les accroches doivent être ajoutées après les interactions de tracé et de modification pour agir avant elles
 function placerAimant() {
   accroches.forEach((a) => carte.removeInteraction(a))
@@ -262,7 +274,8 @@ const menu = ref<
   | { x: number; y: number; type: 'lot'; tenement: string; signature: string; parcelle: string | null }
   | { x: number; y: number; type: 'parcelle'; parcelle: string }
   | { x: number; y: number; type: 'dehors'; lon: number; lat: number }
-  | { x: number; y: number; type: 'ligne'; index: number }
+  // sommet : indice du sommet sous le pointeur, s'il peut être supprimé
+  | { x: number; y: number; type: 'ligne'; index: number; sommet: number | null }
   | null
 >(null)
 
@@ -275,7 +288,15 @@ function ouvrirMenu(pixel: number[]) {
   const [x, y] = pixel
   const ligne = carte.forEachFeatureAtPixel(pixel, (f) => f, { layerFilter: (c) => c === coucheLignes, hitTolerance: 6 })
   if (ligne) {
-    menu.value = { x, y, type: 'ligne', index: ligne.get('index') }
+    const index = ligne.get('index')
+    const { points, fermee } = scenarioCourant(props.bien).lignes[index]
+    const sommet = points.findIndex((p) => {
+      const [sx, sy] = carte.getPixelFromCoordinate(fromLonLat(p))
+      return Math.hypot(sx - x, sy - y) <= PROXIMITE
+    })
+    // Une ligne garde au moins deux sommets, une zone trois
+    const supprimable = sommet >= 0 && points.length > (fermee ? 3 : 2)
+    menu.value = { x, y, type: 'ligne', index, sommet: supprimable ? sommet : null }
     return
   }
 
@@ -357,6 +378,18 @@ function ajouterLaParcelle() {
 function relierExtremites() {
   if (menu.value?.type === 'ligne' && !fermerLigne(props.bien, menu.value.index)) {
     alert('La zone ainsi fermée ne découpe aucun Lot.')
+  }
+
+  menu.value = null
+}
+
+function supprimerLeSommet() {
+  if (menu.value?.type === 'ligne' && menu.value.sommet !== null) {
+    const { index, sommet } = menu.value
+    const points = scenarioCourant(props.bien).lignes[index].points.filter((_, i) => i !== sommet)
+    if (!modifierLigne(props.bien, index, points)) {
+      alert('Sans ce sommet, la ligne ne découperait plus les mêmes Lots.')
+    }
   }
 
   menu.value = null
@@ -456,7 +489,7 @@ defineExpose({ centrerSur })
         </button>
         <label class="aimant"><input v-model="aimant" type="checkbox" /> 🧲 Aimant</label>
       </template>
-      <span v-if="enTrace === 'ligne'" class="aide">Clic pour chaque sommet, double-clic pour finir</span>
+      <span v-if="enTrace === 'ligne'" class="aide">Clic pour chaque sommet, double-clic ou clic sur le dernier point pour finir</span>
       <span v-if="enTrace === 'zone'" class="aide">Clic pour chaque sommet, clic sur le premier point ou double-clic pour fermer</span>
     </div>
     <div v-if="menu" class="menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }">
@@ -483,6 +516,7 @@ defineExpose({ centrerSur })
         >
           Relier les extrémités
         </button>
+        <button v-if="menu.sommet !== null" type="button" @click="supprimerLeSommet">Supprimer ce sommet</button>
         <button type="button" @click="supprimerLaLigne">Supprimer cette ligne de coupe</button>
       </template>
     </div>
