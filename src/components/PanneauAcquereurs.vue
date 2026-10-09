@@ -17,6 +17,7 @@ import {
 } from '../moteur/bien'
 import { lancerDecoupage, type BilanScenario } from '../moteur/decoupage'
 import { euros, hectares, nombreSaisi } from '../format'
+import Panneau from './Panneau.vue'
 
 const props = defineProps<{ bien: Bien; bilan: BilanScenario; tenements: BilanTenement[] }>()
 const nouveau = ref('')
@@ -97,8 +98,7 @@ const acquereur = (id: string | null) => props.bien.acquereurs.find((a) => a.id 
 </script>
 
 <template>
-  <section>
-    <h2>Acquéreurs</h2>
+  <Panneau titre="Acquéreurs">
     <table v-if="bien.acquereurs.length">
       <thead>
         <tr><th></th><th>Nom</th><th colspan="2">Objectif</th><th></th></tr>
@@ -212,7 +212,7 @@ const acquereur = (id: string | null) => props.bien.acquereurs.find((a) => a.id 
     <ul v-if="bilan.avertissements.length" class="avertissements">
       <li v-for="(a, i) in bilan.avertissements" :key="i">{{ a }}</li>
     </ul>
-  </section>
+  </Panneau>
 </template>
 
 <style scoped>

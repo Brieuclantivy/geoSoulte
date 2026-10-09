@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { rechercherCommunes, type Commune } from '../cadastre'
 import type { BilanBien } from '../moteur/bien'
 import { hectares } from '../format'
+import Panneau from './Panneau.vue'
 
 defineProps<{ bilan: BilanBien; chargement: boolean }>()
 const emit = defineEmits<{ commune: [commune: Commune]; retirer: [id: string] }>()
@@ -22,8 +23,7 @@ function choisir(commune: Commune) {
 </script>
 
 <template>
-  <section>
-    <h2>Bien</h2>
+  <Panneau titre="Bien">
     <form class="saisie" @submit.prevent="chercher">
       <input v-model="recherche" placeholder="Rechercher une commune" />
       <button>Chercher</button>
@@ -61,7 +61,7 @@ function choisir(commune: Commune) {
       <dt>Écart</dt>
       <dd>{{ hectares(bilan.ecart) }}</dd>
     </dl>
-  </section>
+  </Panneau>
 </template>
 
 <style scoped>

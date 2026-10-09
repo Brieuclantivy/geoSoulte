@@ -8,6 +8,7 @@ import {
   supprimerScenario,
   type Bien,
 } from '../moteur/bien'
+import Panneau from './Panneau.vue'
 
 const props = defineProps<{ bien: Bien }>()
 
@@ -28,8 +29,7 @@ function supprimer() {
 </script>
 
 <template>
-  <section>
-    <h2>Scénario</h2>
+  <Panneau titre="Scénario" replie>
     <div class="ligne">
       <select :value="bien.courant" @change="choisirScenario(bien, ($event.target as HTMLSelectElement).value)">
         <option v-for="s in bien.scenarios" :key="s.id" :value="s.id">{{ s.nom }}</option>
@@ -45,7 +45,7 @@ function supprimer() {
       <button type="button" @click="dupliquer">Dupliquer</button>
       <button type="button" :disabled="bien.scenarios.length <= 1" @click="supprimer">Supprimer</button>
     </div>
-  </section>
+  </Panneau>
 </template>
 
 <style scoped>

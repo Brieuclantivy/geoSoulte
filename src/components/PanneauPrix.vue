@@ -4,6 +4,7 @@ import { fixerPrix, type Bien } from '../moteur/bien'
 import { horsCouvertureDvf, statistiquesDvf, type StatistiquesDvf } from '../moteur/dvf'
 import { ventesDvf } from '../dvf'
 import { euros, nombreSaisi } from '../format'
+import Panneau from './Panneau.vue'
 
 const props = defineProps<{ bien: Bien; ecartAvantRecalage: number | null }>()
 
@@ -69,8 +70,7 @@ function parHectare(id: string, e: Event) {
 </script>
 
 <template>
-  <section>
-    <h2>Prix</h2>
+  <Panneau titre="Prix">
     <label>
       Prix total du Bien (€)
       <input type="number" min="0" step="any" :value="bien.prix.total" @change="total" />
@@ -155,7 +155,7 @@ function parHectare(id: string, e: Event) {
       Écart entre le prix total et les prix à l'hectare : {{ euros(ecartAvantRecalage) }} — les prix à l'hectare sont
       recalés pour que la somme des Coûts fasse le prix total.
     </p>
-  </section>
+  </Panneau>
 </template>
 
 <style scoped>

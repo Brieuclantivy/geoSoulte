@@ -77,6 +77,11 @@ const couches = {
 }
 couches.rpg.setOpacity(0.6)
 
+// Sur téléphone (même seuil que la mise en page d'App.vue), l'encart Fonds est replié au départ et les outils
+// sont regroupés derrière un bouton « Outils »
+const fondsOuvert = !window.matchMedia('(max-width: 700px)').matches
+const outilsOuverts = ref(false)
+
 const visibles = reactive({ orthophoto: true, cadastre: true, rpg: false })
 watch(
   visibles,
@@ -852,23 +857,28 @@ defineExpose({ centrerSur })
   <div class="carte">
     <div ref="cible" class="ol"></div>
     <div class="outils">
-      <button type="button" title="Annuler (Ctrl+Z)" :disabled="!peutAnnuler" @click="emit('annuler')">↶</button>
-      <button type="button" title="Rétablir (Ctrl+Maj+Z)" :disabled="!peutRetablir" @click="emit('retablir')">↷</button>
-      <template v-if="bien.parcelles.length">
-        <button type="button" @click="basculerTrace('ligne')">
-          {{ enTrace === 'ligne' ? 'Annuler le tracé' : '✏ Tracer une ligne de coupe' }}
-        </button>
-        <button type="button" @click="basculerTrace('zone')">
-          {{ enTrace === 'zone' ? 'Annuler le tracé' : '⬠ Tracer une zone' }}
-        </button>
-        <label class="case"><input v-model="aimant" type="checkbox" /> 🧲 Aimant</label>
-        <label
-          class="case"
-          title="Routes et chemins de la BD TOPO (IGN) qui desservent les Lots. Certains chemins d'exploitation n'y figurent pas, et un chemin peut être privé : l'alerte d'accès invite à vérifier."
-        >
-          <input v-model="voiesVisibles" type="checkbox" :disabled="!voies" /> Voies
-        </label>
-      </template>
+      <button type="button" class="bascule-outils" :aria-expanded="outilsOuverts" @click="outilsOuverts = !outilsOuverts">
+        Outils {{ outilsOuverts ? '▴' : '▾' }}
+      </button>
+      <div class="groupe" :class="{ ouvert: outilsOuverts }">
+        <button type="button" title="Annuler (Ctrl+Z)" :disabled="!peutAnnuler" @click="emit('annuler')">↶</button>
+        <button type="button" title="Rétablir (Ctrl+Maj+Z)" :disabled="!peutRetablir" @click="emit('retablir')">↷</button>
+        <template v-if="bien.parcelles.length">
+          <button type="button" @click="basculerTrace('ligne')">
+            {{ enTrace === 'ligne' ? 'Annuler le tracé' : '✏ Tracer une ligne de coupe' }}
+          </button>
+          <button type="button" @click="basculerTrace('zone')">
+            {{ enTrace === 'zone' ? 'Annuler le tracé' : '⬠ Tracer une zone' }}
+          </button>
+          <label class="case"><input v-model="aimant" type="checkbox" /> 🧲 Aimant</label>
+          <label
+            class="case"
+            title="Routes et chemins de la BD TOPO (IGN) qui desservent les Lots. Certains chemins d'exploitation n'y figurent pas, et un chemin peut être privé : l'alerte d'accès invite à vérifier."
+          >
+            <input v-model="voiesVisibles" type="checkbox" :disabled="!voies" /> Voies
+          </label>
+        </template>
+      </div>
       <span v-if="erreurPosition" class="aide">{{ erreurPosition }}</span>
       <span v-if="precision !== null && precision > PRECISION_FAIBLE" class="aide">
         Précision faible : ± {{ Math.round(precision) }} m
@@ -927,7 +937,11 @@ defineExpose({ centrerSur })
         <button type="button" @click="supprimerLaLigne">Supprimer cette ligne de coupe</button>
       </template>
     </div>
-    <Boussole :orientation="scenarioCourant(bien).orientation" @change="(o) => fixerOrientation(bien, o)" />
+    <Boussole
+      :class="{ 'bien-vide': !bien.parcelles.length }"
+      :orientation="scenarioCourant(bien).orientation"
+      @change="(o) => fixerOrientation(bien, o)"
+    />
     <button type="button" class="ma-position" title="Ma position" @click="boutonPosition">
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
         <circle cx="12" cy="12" r="4" :fill="suiviPosition ? '#1e88e5' : 'none'" stroke="currentColor" stroke-width="2" />
@@ -935,12 +949,12 @@ defineExpose({ centrerSur })
         <path d="M12 1v3M12 20v3M1 12h3M20 12h3" stroke="currentColor" stroke-width="2" />
       </svg>
     </button>
-    <fieldset class="fonds">
-      <legend>Fonds</legend>
+    <details class="fonds" :open="fondsOuvert">
+      <summary>Fonds</summary>
       <label><input v-model="visibles.orthophoto" type="checkbox" /> Orthophoto</label>
       <label><input v-model="visibles.cadastre" type="checkbox" /> Plan cadastral</label>
       <label><input v-model="visibles.rpg" type="checkbox" /> RPG (cultures)</label>
-    </fieldset>
+    </details>
   </div>
 </template>
 
@@ -1084,31 +1098,42 @@ defineExpose({ centrerSur })
   margin: 0;
   padding: 8px 12px;
   background: white;
-  border: none;
   border-radius: var(--rayon);
   box-shadow: var(--ombre);
   font-size: 13px;
 }
-/* Légende flottante : placée dans le cadre plutôt qu'à cheval sur sa bordure */
-.fonds legend {
-  float: left;
-  width: 100%;
-  margin-bottom: 4px;
-  padding: 0;
+.fonds summary {
   font-size: 12px;
   font-weight: 600;
-  color: var(--discret);
+}
+.fonds[open] summary {
+  margin-bottom: 4px;
 }
 .fonds label {
   display: flex;
   align-items: center;
   gap: 6px;
-  clear: left;
   padding: 1px 0;
   cursor: pointer;
 }
 .fonds input {
   margin: 0;
+}
+/* Le bouton « Outils » n'apparaît que sur téléphone, où la Boussole est masquée tant que le Bien est vide */
+.bascule-outils {
+  display: none;
+}
+.groupe {
+  display: contents;
+}
+@media (max-width: 700px) {
+  .bascule-outils {
+    display: inline-flex;
+  }
+  .groupe:not(.ouvert),
+  .boussole.bien-vide {
+    display: none;
+  }
 }
 /* En dernier : l'emporte sur les règles d'affichage ci-dessus */
 @media print {

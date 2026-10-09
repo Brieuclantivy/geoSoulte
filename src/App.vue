@@ -321,7 +321,7 @@ aside > section {
     overflow-x: auto;
   }
   main {
-    height: 60vh;
+    height: 80vh;
     flex: none;
   }
 }

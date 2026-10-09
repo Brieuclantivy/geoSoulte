@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import type { Bien } from '../moteur/bien'
 import { exporter, importer } from '../moteur/export'
 import { lotsEnGeoJSON, lotsEnKML, nomFichierLots } from '../moteur/export-lots'
+import Panneau from './Panneau.vue'
 
 const props = defineProps<{ bien: Bien }>()
 const emit = defineEmits<{ importe: [bien: Bien] }>()
@@ -53,8 +54,7 @@ async function importerFichier(e: Event) {
 </script>
 
 <template>
-  <section>
-    <h2>Fichier</h2>
+  <Panneau titre="Fichier" replie>
     <button type="button" @click="exporterFichier">Exporter</button>
     <label class="bouton import">
       Importer
@@ -65,7 +65,7 @@ async function importerFichier(e: Event) {
       <button type="button" @click="exporterLots('kml')">Exporter les Lots (KML)</button>
     </div>
     <p v-if="erreur" class="erreur">{{ erreur }}</p>
-  </section>
+  </Panneau>
 </template>
 
 <style scoped>

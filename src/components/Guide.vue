@@ -44,7 +44,7 @@ const etapes = [
   {
     titre: '5. Ajuster à la main',
     texte: [
-      'Glissez les sommets des lignes de coupe, ou tirez le milieu d’un segment pour en ajouter un. « Tracer une ligne de coupe » ou « Tracer une zone » ajoute vos propres découpes.',
+      'Glissez les sommets des lignes de coupe, ou tirez le milieu d’un segment pour en ajouter un. « Tracer une ligne de coupe » ou « Tracer une zone » ajoute vos propres découpes (sur téléphone, ces boutons sont sous « Outils »).',
       'Clic droit (ou appui long) sur un Lot pour le donner à un autre Acquéreur, sur une ligne pour la supprimer. Au survol, la surface et la valeur s’affichent.',
     ],
     astuce:
@@ -55,6 +55,7 @@ const etapes = [
     texte: [
       'Les Scénarios permettent d’essayer plusieurs découpages du même Bien (« Dupliquer » repart du Scénario actuel).',
       'Votre travail est sauvegardé dans ce navigateur. « Exporter » en fait un fichier à partager, « Imprimer le récapitulatif » une page à remettre.',
+      'Chaque panneau se replie d’un clic sur son titre ; « Scénario » et « Fichier » sont repliés au départ.',
     ],
   },
 ]
