@@ -10,14 +10,16 @@ import GeoJSON from 'ol/format/GeoJSON'
 import Collection from 'ol/Collection'
 import Feature from 'ol/Feature'
 import LineString from 'ol/geom/LineString'
+import Point from 'ol/geom/Point'
 import Polygon from 'ol/geom/Polygon'
+import Geolocation from 'ol/Geolocation'
 import Modify from 'ol/interaction/Modify'
 import Draw from 'ol/interaction/Draw'
 import Snap from 'ol/interaction/Snap'
 import type MapBrowserEvent from 'ol/MapBrowserEvent'
 import { equals, squaredDistance, squaredDistanceToSegment, type Coordinate } from 'ol/coordinate'
 import { primaryAction } from 'ol/events/condition'
-import { Circle, Fill, Stroke, Style } from 'ol/style'
+import { Circle, Fill, Icon, Stroke, Style } from 'ol/style'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { fixerOrientation, scenarioCourant, type Bien, type BilanBien } from '../moteur/bien'
 import { prixEffectifs } from '../moteur/prix'
@@ -228,6 +230,113 @@ watch(
   },
   { immediate: true },
 )
+
+// Position de l'utilisateur (GPS du téléphone) : point, cercle de précision et cap de l'appareil
+const PRECISION_FAIBLE = 20 // mètres
+const geolocalisation = new Geolocation({ projection: 'EPSG:3857', trackingOptions: { enableHighAccuracy: true } })
+const pointPosition = new Feature<Point>()
+const cerclePosition = new Feature<Polygon>()
+const suiviPosition = ref(false)
+const precision = ref<number | null>(null)
+const erreurPosition = ref<string | null>(null)
+// Cap de l'appareil en degrés depuis le nord, null sans boussole
+let cap: number | null = null
+const FLECHE =
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><path d="M20 2 L28 18 L12 18 Z" fill="#1e88e5" stroke="white" stroke-width="2"/></svg>',
+  )
+const couchePosition = new VectorLayer({
+  source: new VectorSource({ features: [cerclePosition, pointPosition] }),
+  style: (feature) => {
+    if (feature === cerclePosition) {
+      return new Style({ fill: new Fill({ color: 'rgba(30, 136, 229, 0.15)' }), stroke: new Stroke({ color: '#1e88e5' }) })
+    }
+
+    const styles = [
+      new Style({ image: new Circle({ radius: 7, fill: new Fill({ color: '#1e88e5' }), stroke: new Stroke({ color: 'white', width: 2 }) }) }),
+    ]
+    if (cap !== null) {
+      styles.unshift(new Style({ image: new Icon({ src: FLECHE, rotation: (cap * Math.PI) / 180, rotateWithView: true }) }))
+    }
+
+    return styles
+  },
+})
+geolocalisation.on('change:position', () => {
+  const position = geolocalisation.getPosition()!
+  erreurPosition.value = null
+  const premiere = !pointPosition.getGeometry()
+  pointPosition.setGeometry(new Point(position))
+  // Seul le premier point centre la carte ; ensuite elle reste libre, le bouton y ramène
+  if (premiere) {
+    recentrer()
+  }
+})
+geolocalisation.on('change:accuracyGeometry', () => {
+  cerclePosition.setGeometry(geolocalisation.getAccuracyGeometry() ?? undefined)
+  precision.value = geolocalisation.getAccuracy() ?? null
+})
+// Seul le refus arrête le suivi : une perte de signal passagère laisse le GPS reprendre à la mesure suivante
+geolocalisation.on('error', (e) => {
+  if (e.code === 1) {
+    arreterPosition()
+    erreurPosition.value = 'Accès à la position refusé'
+    return
+  }
+
+  erreurPosition.value = 'Position indisponible'
+})
+
+// Android émet deviceorientationabsolute (alpha compté depuis le nord, sens inverse), iOS webkitCompassHeading
+function orienter(e: DeviceOrientationEvent) {
+  const boussole =
+    (e as DeviceOrientationEvent & { webkitCompassHeading?: number }).webkitCompassHeading ??
+    (e.absolute && e.alpha !== null ? 360 - e.alpha : undefined)
+  if (boussole === undefined) {
+    return
+  }
+
+  cap = (boussole + (screen.orientation?.angle ?? 0)) % 360
+  pointPosition.changed()
+}
+
+function recentrer() {
+  const position = geolocalisation.getPosition()
+  const vue = carte.getView()
+  if (position) {
+    vue.animate({ center: position, zoom: Math.max(vue.getZoom() ?? 0, 18) })
+  }
+}
+
+// Comme Google Maps : le premier clic demande la position, les suivants recentrent la carte dessus
+function boutonPosition() {
+  if (suiviPosition.value) {
+    recentrer()
+    return
+  }
+
+  erreurPosition.value = null
+  suiviPosition.value = true
+  // iOS demande l'autorisation de la boussole, pendant le clic
+  const autorisation = (DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> })
+    .requestPermission
+  autorisation?.().catch(() => {})
+  window.addEventListener('deviceorientationabsolute', orienter)
+  window.addEventListener('deviceorientation', orienter)
+  geolocalisation.setTracking(true)
+}
+
+function arreterPosition() {
+  suiviPosition.value = false
+  geolocalisation.setTracking(false)
+  window.removeEventListener('deviceorientationabsolute', orienter)
+  window.removeEventListener('deviceorientation', orienter)
+  pointPosition.setGeometry(undefined)
+  cerclePosition.setGeometry(undefined)
+  cap = null
+  precision.value = null
+}
 
 // Tolérance de saisie de Modify (px), sa valeur par défaut
 const SAISIE = 10
@@ -659,7 +768,7 @@ let carte: OlMap
 onMounted(() => {
   carte = new OlMap({
     target: cible.value,
-    layers: [couches.orthophoto, couches.rpg, couches.cadastre, coucheBien, coucheLots, coucheVoies, coucheLignes],
+    layers: [couches.orthophoto, couches.rpg, couches.cadastre, coucheBien, coucheLots, coucheVoies, coucheLignes, couchePosition],
     view: new View({ center: fromLonLat([2.5, 46.6]), zoom: 6 }),
   })
   carte.addInteraction(modification)
@@ -728,6 +837,7 @@ function apresImpression() {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', touche)
+  arreterPosition()
   impression.removeEventListener('change', changementImpression)
 })
 
@@ -759,6 +869,10 @@ defineExpose({ centrerSur })
           <input v-model="voiesVisibles" type="checkbox" :disabled="!voies" /> Voies
         </label>
       </template>
+      <span v-if="erreurPosition" class="aide">{{ erreurPosition }}</span>
+      <span v-if="precision !== null && precision > PRECISION_FAIBLE" class="aide">
+        Précision faible : ± {{ Math.round(precision) }} m
+      </span>
       <span v-if="enTrace === 'ligne'" class="aide">Clic pour chaque sommet, double-clic ou clic sur le dernier point pour finir</span>
       <span v-if="enTrace === 'zone'" class="aide">Clic pour chaque sommet, clic sur le premier point ou double-clic pour fermer</span>
     </div>
@@ -814,6 +928,13 @@ defineExpose({ centrerSur })
       </template>
     </div>
     <Boussole :orientation="scenarioCourant(bien).orientation" @change="(o) => fixerOrientation(bien, o)" />
+    <button type="button" class="ma-position" title="Ma position" @click="boutonPosition">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <circle cx="12" cy="12" r="4" :fill="suiviPosition ? '#1e88e5' : 'none'" stroke="currentColor" stroke-width="2" />
+        <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2" />
+        <path d="M12 1v3M12 20v3M1 12h3M20 12h3" stroke="currentColor" stroke-width="2" />
+      </svg>
+    </button>
     <fieldset class="fonds">
       <legend>Fonds</legend>
       <label><input v-model="visibles.orthophoto" type="checkbox" /> Orthophoto</label>
@@ -938,6 +1059,23 @@ defineExpose({ centrerSur })
   /* Pas de loupe ni de sélection de texte à l'appui long, qui ouvre le menu */
   -webkit-touch-callout: none;
   user-select: none;
+}
+.ma-position {
+  position: absolute;
+  right: 10px;
+  /* Au-dessus du bouton des attributions d'OpenLayers */
+  bottom: 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: white;
+  color: #555;
+  box-shadow: var(--ombre);
 }
 .fonds {
   position: absolute;
